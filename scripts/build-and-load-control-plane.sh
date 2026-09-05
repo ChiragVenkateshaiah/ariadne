@@ -4,7 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER="ariadne"
-COMPONENTS=(sensor)
+COMPONENTS=(sensor logcollector)
 
 cd "$ROOT"
 for c in "${COMPONENTS[@]}"; do

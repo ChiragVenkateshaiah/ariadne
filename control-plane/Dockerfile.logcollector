@@ -1,0 +1,16 @@
+FROM golang:1.25-bookworm AS build
+WORKDIR /src
+COPY control-plane/go.mod control-plane/go.sum ./
+RUN go mod download
+COPY control-plane/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/logcollector ./cmd/logcollector
+
+# Not distroless/nonroot: this process must read the API server's audit log
+# file, which is root-owned 0600 on the host (kubelet mounts hostPath
+# volumes preserving host ownership). Running as root here is a deliberate,
+# narrow exception -- and a fitting one, since "which components run as
+# root and why" is exactly the kind of question the audit-log RBAC story
+# (docs/ARCHITECTURE.md) exists to surface about a real cluster too.
+FROM gcr.io/distroless/static-debian12:latest
+COPY --from=build /out/logcollector /logcollector
+ENTRYPOINT ["/logcollector"]

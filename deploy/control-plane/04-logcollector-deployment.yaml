@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logcollector
+  namespace: ariadne-system
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: logcollector}}
+  template:
+    metadata: {labels: {app: logcollector}}
+    spec:
+      serviceAccountName: logcollector
+      # The API server's audit log only exists on the control-plane node
+      # (that's where kube-apiserver runs) -- pin this pod there and
+      # tolerate its NoSchedule taint. See Dockerfile.logcollector for why
+      # this container also runs as root (the file is host-root-owned 0600).
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      containers:
+        - name: logcollector
+          image: ariadne/logcollector:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 9091, name: grpc}]
+          env:
+            - {name: PORT, value: "9091"}
+            - {name: SENSOR_ADDR, value: "sensor.ariadne-system:9090"}
+            - {name: AUDIT_LOG_PATH, value: "/var/log/ariadne-audit/audit.log"}
+          volumeMounts:
+            - {name: audit-log, mountPath: /var/log/ariadne-audit, readOnly: true}
+          resources:
+            requests: {cpu: 20m, memory: 48Mi}
+            limits: {memory: 128Mi}
+          readinessProbe:
+            grpc: {port: 9091}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            grpc: {port: 9091}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+      volumes:
+        - name: audit-log
+          hostPath: {path: /var/log/ariadne-audit, type: DirectoryOrCreate}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: logcollector
+  namespace: ariadne-system
+spec:
+  selector: {app: logcollector}
+  ports: [{port: 9091, targetPort: 9091, name: grpc}]
