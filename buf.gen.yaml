@@ -1,0 +1,18 @@
+version: v2
+inputs:
+  - directory: proto
+plugins:
+  # Go control plane
+  - remote: buf.build/protocolbuffers/go
+    out: control-plane/gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: control-plane/gen
+    opt: paths=source_relative
+  # Python intelligence plane
+  - remote: buf.build/protocolbuffers/python
+    out: brain/ariadne/pb
+  - remote: buf.build/protocolbuffers/pyi
+    out: brain/ariadne/pb
+  - remote: buf.build/grpc/python
+    out: brain/ariadne/pb

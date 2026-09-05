@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package ariadne.v1;
+
+import "google/protobuf/timestamp.proto";
+import "ariadne/v1/common.proto";
+import "ariadne/v1/change.proto";
+
+option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;ariadnev1";
+
+// LogCollector is the component that makes explainability possible. When a test
+// fails, the graph already knows which pods served it and over what window, so
+// this service fans out across those pods concurrently and returns one bundle
+// the LLM can reason over. This is the difference between
+//   "expected 200, got 500"
+// and
+//   "pricing-svc threw NPE at PriceEngine.java:88, 4 minutes after ConfigMap
+//    pricing-flags changed rounding_mode HALF_UP -> FLOOR".
+service LogCollector {
+  rpc CollectEvidence(CollectEvidenceRequest) returns (EvidenceBundle);
+  rpc StreamPodLogs(StreamPodLogsRequest) returns (stream LogLine);
+  rpc QueryAuditLog(QueryAuditLogRequest) returns (QueryAuditLogResponse);
+}
+
+message CollectEvidenceRequest {
+  string correlation_id = 1;             // usually the failing task_id
+  TimeWindow window = 2;
+
+  repeated ObjectRef pods = 3;           // explicit pods, from ValidatorResult
+  repeated PodSelector selectors = 4;    // or select them by label
+  int32  lookback_seconds = 5;           // widen window backwards for causes
+
+  bool include_pod_logs = 6;
+  bool include_k8s_events = 7;
+  bool include_audit_events = 8;
+  bool include_recent_changes = 9;
+
+  int32 max_lines_per_pod = 10;          // 0 = collector default
+  repeated string log_level_filter = 11; // e.g. ["ERROR","WARN","FATAL"]
+  bool include_previous_container = 12;  // logs from a crashed prior instance
+}
+
+message PodSelector {
+  string namespace = 1;
+  string label_selector = 2;             // "app=pricing-svc"
+  repeated string container_names = 3;
+}
+
+message EvidenceBundle {
+  string correlation_id = 1;
+  TimeWindow window = 2;
+
+  repeated PodLogs pod_logs = 3;
+  repeated K8sEvent k8s_events = 4;
+  repeated AuditEvent audit_events = 5;
+  repeated ChangeEvent recent_changes = 6;  // provenance, in the same payload
+
+  google.protobuf.Timestamp collected_at = 7;
+  Truncation truncation = 8;
+  repeated string collection_errors = 9;    // pod gone, log rotated, etc.
+}
+
+message PodLogs {
+  ObjectRef pod = 1;
+  string container = 2;
+  string node_name = 3;
+  repeated LogLine lines = 4;
+  bool   from_previous_container = 5;
+  int32  restart_count = 6;
+  Truncation truncation = 7;
+}
+
+message LogLine {
+  google.protobuf.Timestamp timestamp = 1;
+  string level = 2;                  // parsed when the line is structured
+  string message = 3;
+  string raw = 4;
+  map<string, string> fields = 5;    // parsed JSON log fields
+  string trace_id = 6;               // enables cross-service stitching
+  string span_id = 7;
+}
+
+message K8sEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  ObjectRef involved_object = 2;
+  string type = 3;                   // Normal | Warning
+  string reason = 4;                 // BackOff, Unhealthy, FailedScheduling...
+  string message = 5;
+  int32  count = 6;
+  string reporting_component = 7;
+}
+
+message StreamPodLogsRequest {
+  ObjectRef pod = 1;
+  string container = 2;
+  bool follow = 3;
+  int32 tail_lines = 4;
+  google.protobuf.Timestamp since = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log -- the behavioural half of the security story
+// ---------------------------------------------------------------------------
+
+// AuditEvent is one API-server audit record. Reading these is how we prove
+// over-permissive RBAC by BEHAVIOUR rather than by reading Role YAML:
+// "this ServiceAccount is granted 47 permissions and exercised 3."
+message AuditEvent {
+  string audit_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string stage = 3;                  // ResponseComplete, Panic, ...
+  string verb = 4;                   // get, list, watch, create, delete, ...
+
+  string user_name = 5;
+  repeated string user_groups = 6;
+  bool   is_service_account = 7;
+  string sa_namespace = 8;
+  string sa_name = 9;
+
+  string api_group = 10;
+  string resource = 11;
+  string subresource = 12;           // "exec", "log", "portforward"
+  string namespace = 13;
+  string name = 14;
+
+  int32  response_code = 15;
+  string decision = 16;              // allow | forbid
+  string authz_reason = 17;
+  repeated string source_ips = 18;
+  string user_agent = 19;
+  string request_uri = 20;
+}
+
+message QueryAuditLogRequest {
+  TimeWindow window = 1;
+  repeated string verbs = 2;
+  repeated string resources = 3;
+  repeated string namespaces = 4;
+  repeated string user_names = 5;
+  repeated int32  response_codes = 6;   // e.g. [401,403] to find authz drift
+  bool   service_accounts_only = 7;
+  bool   exclude_read_only = 8;
+  int32  limit = 9;
+}
+
+message QueryAuditLogResponse {
+  repeated AuditEvent events = 1;
+  // Pre-aggregated so the brain can reason without holding every raw event.
+  repeated SubjectActivity subject_activity = 2;
+  Truncation truncation = 3;
+}
+
+// SubjectActivity summarises what one identity actually did in the window.
+// Compared against what it is PERMITTED to do, this yields a least-privilege
+// recommendation backed by observed behaviour.
+message SubjectActivity {
+  string subject = 1;                       // "system:serviceaccount:ns:name"
+  bool   is_service_account = 2;
+  repeated string verbs_used = 3;
+  repeated string resources_touched = 4;    // "apps/deployments", "core/secrets"
+  repeated string namespaces_touched = 5;
+  int64  total_requests = 6;
+  int64  forbidden_requests = 7;            // 403 spike after a deploy = bug
+  google.protobuf.Timestamp first_seen = 8;
+  google.protobuf.Timestamp last_seen = 9;
+}

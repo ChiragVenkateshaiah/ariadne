@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+control-plane/gen/
+brain/ariadne/pb/
+*.db
+*.db-wal
+*.db-shm
+.env
+bin/

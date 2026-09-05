@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package ariadne.v1;
+
+import "google/protobuf/timestamp.proto";
+import "ariadne/v1/common.proto";
+
+option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;ariadnev1";
+
+// ChangeStream is the Go sensor's outbound surface. The brain subscribes once
+// at startup and consumes for the life of the process.
+service ChangeStream {
+  // Subscribe opens a long-lived server stream of normalized change events.
+  // The sensor replays from `since` (or from its buffer head) before switching
+  // to live tailing, so a brain restart never misses a window.
+  rpc Subscribe(SubscribeRequest) returns (stream ChangeEvent);
+
+  // GetRecentChanges is a point query used during evidence correlation:
+  // "what changed in the 10 minutes before this test failed?"
+  rpc GetRecentChanges(GetRecentChangesRequest) returns (GetRecentChangesResponse);
+
+  // Replay drives the demo-safety path: a recorded sequence of events can be
+  // pushed through the exact production code path with no live cluster.
+  rpc Replay(ReplayRequest) returns (stream ChangeEvent);
+}
+
+message SubscribeRequest {
+  string subscriber_id = 1;              // for at-least-once resume
+  google.protobuf.Timestamp since = 2;   // unset = from now
+  repeated string namespaces = 3;        // empty = all watched namespaces
+  repeated ChangeClass classes = 4;      // empty = all classes
+}
+
+message GetRecentChangesRequest {
+  TimeWindow window = 1;
+  repeated string namespaces = 2;
+  repeated ObjectRef related_to = 3;     // narrow to objects touching these
+}
+
+message GetRecentChangesResponse {
+  repeated ChangeEvent events = 1;
+  Truncation truncation = 2;
+}
+
+message ReplayRequest {
+  string fixture_name = 1;
+  double speed_multiplier = 2;           // 0 or 1 = real time
+}
+
+// ChangeSource records where we learned about the change. Kubernetes is the
+// primary sensor because deploy-time truth beats commit-time guessing --
+// especially when an AI wrote the commit message.
+enum ChangeSource {
+  CHANGE_SOURCE_UNSPECIFIED = 0;
+  CHANGE_SOURCE_KUBERNETES  = 1;
+  CHANGE_SOURCE_GIT         = 2;
+  CHANGE_SOURCE_OPENAPI     = 3;
+  CHANGE_SOURCE_UI_CRAWL    = 4;
+  CHANGE_SOURCE_REPLAY      = 5;
+}
+
+// ChangeClass is the sensor's cheap, syntactic classification. It exists so the
+// brain can filter and prioritise without parsing every diff, and so a missing
+// LLM never blocks triage. Semantic meaning is layered on later.
+enum ChangeClass {
+  CHANGE_CLASS_UNSPECIFIED    = 0;
+  CHANGE_CLASS_WORKLOAD_IMAGE = 1;   // Deployment/StatefulSet image changed
+  CHANGE_CLASS_WORKLOAD_SPEC  = 2;   // env, probes, resources, args
+  CHANGE_CLASS_CONFIG         = 3;   // ConfigMap data -- often a behaviour change
+  CHANGE_CLASS_SECRET         = 4;   // Secret metadata only; never the payload
+  CHANGE_CLASS_ROUTE          = 5;   // Ingress / Gateway / HTTPRoute
+  CHANGE_CLASS_SERVICE        = 6;   // Service, Endpoints, ports
+  CHANGE_CLASS_NETWORK_POLICY = 7;   // segmentation posture -- OWASP K8s K07
+  CHANGE_CLASS_RBAC           = 8;   // Role/Binding/SA -- OWASP K8s K03
+  CHANGE_CLASS_SCALING        = 9;   // replicas, HPA -- perf envelope moved
+  CHANGE_CLASS_POLICY         = 10;  // admission policy, PSA labels
+  CHANGE_CLASS_CRD            = 11;
+  CHANGE_CLASS_API_CONTRACT   = 12;  // OpenAPI diff
+  CHANGE_CLASS_SOURCE_COMMIT  = 13;  // git diff
+  CHANGE_CLASS_UI_SURFACE     = 14;  // crawled route/DOM shape changed
+}
+
+enum ChangeOperation {
+  CHANGE_OPERATION_UNSPECIFIED = 0;
+  CHANGE_OPERATION_ADDED       = 1;
+  CHANGE_OPERATION_MODIFIED    = 2;
+  CHANGE_OPERATION_DELETED     = 3;
+}
+
+// ChangeEvent is the atom of the whole system. Everything downstream --
+// impact analysis, test selection, adjudication, the release gate -- keys off
+// these. Treat this message as append-only.
+message ChangeEvent {
+  string id = 1;                              // ULID, monotonic
+  google.protobuf.Timestamp observed_at = 2;  // when the sensor saw it
+  google.protobuf.Timestamp occurred_at = 3;  // object's own timestamp, if known
+
+  ChangeSource    source    = 4;
+  ChangeClass     change_class = 5;
+  ChangeOperation operation = 6;
+
+  ObjectRef object = 7;
+  repeated FieldDiff diffs = 8;
+  Provenance provenance = 9;
+
+  // Sensor-computed hints. Cheap, deterministic, no LLM. They let the brain
+  // triage a flood of events before spending a token on any of them.
+  ChangeHints hints = 10;
+
+  map<string, string> labels = 11;       // object labels, carried for grouping
+  string raw_object_json = 12;           // full object, for deep inspection
+  string previous_object_json = 13;      // prior version when we have it
+}
+
+// ChangeHints are deterministic signals the sensor can derive for free.
+// They are hints, not verdicts -- the brain may override any of them.
+message ChangeHints {
+  bool   affects_running_traffic = 1;  // rollout will restart pods
+  bool   affects_security_posture = 2; // RBAC / NetworkPolicy / PSA / SA token
+  bool   affects_api_surface = 3;      // route added/removed/changed
+  bool   affects_configuration = 4;    // ConfigMap/env -- may change behaviour
+  bool   is_scale_only = 5;            // replicas moved and nothing else
+  bool   is_noise = 6;                 // status-only / resourceVersion churn
+  int32  changed_field_count = 7;
+  repeated string touched_workload_names = 8;  // resolved by the sensor's informer cache
+}

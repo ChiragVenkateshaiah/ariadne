@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package ariadne.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;ariadnev1";
+
+// ObjectRef identifies any Kubernetes object. Used everywhere a component needs
+// to point at something in the cluster without carrying its whole spec.
+message ObjectRef {
+  string api_version = 1;  // "apps/v1"
+  string kind        = 2;  // "Deployment"
+  string namespace   = 3;  // "" for cluster-scoped objects
+  string name        = 4;
+  string uid         = 5;  // stable across renames; preferred join key
+  string resource_version = 6;
+}
+
+// TimeWindow is a half-open interval [start, end).
+message TimeWindow {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end   = 2;
+}
+
+// FieldDiff is one changed field, expressed as a JSONPath-ish pointer into the
+// object plus its before/after values rendered as strings. The sensor produces
+// these; it deliberately does NOT interpret them. Interpretation is the brain's
+// job, and keeping the sensor dumb is what lets us evolve semantics without
+// redeploying the control plane.
+message FieldDiff {
+  string path   = 1;  // "/spec/template/spec/containers/0/image"
+  string before = 2;  // "" when the field was added
+  string after  = 3;  // "" when the field was removed
+  DiffOp op     = 4;
+}
+
+enum DiffOp {
+  DIFF_OP_UNSPECIFIED = 0;
+  DIFF_OP_ADDED       = 1;
+  DIFF_OP_REMOVED     = 2;
+  DIFF_OP_MODIFIED    = 3;
+}
+
+// Provenance answers "who or what caused this, and can we trace it to source?"
+// This is the single most important input to the heal-vs-bug adjudication:
+// a failure that follows an intentional UI refactor is a test defect, while the
+// same failure with no explanatory change is a regression.
+message Provenance {
+  string actor          = 1;  // k8s username or SA that issued the write
+  string actor_kind     = 2;  // "User" | "ServiceAccount" | "unknown"
+  string manager        = 3;  // managedFields fieldManager: "kubectl", "argocd", ...
+  string git_commit_sha = 4;  // from image label / annotation, when available
+  string git_ref        = 5;
+  string commit_message = 6;
+  string image_before   = 7;
+  string image_after    = 8;
+  string change_request = 9;  // PR/ticket id if annotated
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  SEVERITY_INFO        = 1;
+  SEVERITY_LOW         = 2;
+  SEVERITY_MEDIUM      = 3;
+  SEVERITY_HIGH        = 4;
+  SEVERITY_CRITICAL    = 5;
+}
+
+// Truncation records what we had to drop, so the brain never silently reasons
+// over a partial picture and claims full confidence.
+message Truncation {
+  bool   truncated     = 1;
+  int64  dropped_items = 2;
+  string reason        = 3;
+}

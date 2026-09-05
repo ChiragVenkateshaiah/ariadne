@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package ariadne.v1;
+
+import "google/protobuf/timestamp.proto";
+import "ariadne/v1/common.proto";
+
+option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;ariadnev1";
+
+// Orchestrator turns validation intent into Kubernetes Jobs and reports their
+// lifecycle back. Deliberately dumb about test semantics: it never parses a
+// spec. That decoupling is what lets the Intent Spec format evolve daily
+// during the build without touching a line of Go.
+service Orchestrator {
+  rpc RunValidators(RunValidatorsRequest) returns (stream ValidatorResult);
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
+  rpc GetRunStatus(GetRunStatusRequest) returns (RunStatus);
+}
+
+// FaultInjector controls the resilience dimension: latency, errors and
+// partitions injected between services so a business workflow can be tested
+// under realistic degradation rather than only on the happy path.
+service FaultInjector {
+  rpc InjectFault(InjectFaultRequest) returns (InjectFaultResponse);
+  rpc ClearFaults(ClearFaultsRequest) returns (ClearFaultsResponse);
+  rpc ListFaults(ListFaultsRequest) returns (ListFaultsResponse);
+}
+
+enum ValidatorKind {
+  VALIDATOR_KIND_UNSPECIFIED        = 0;
+  VALIDATOR_KIND_UI                 = 1;  // Playwright + intent resolver
+  VALIDATOR_KIND_API                = 2;  // contract + behaviour from OpenAPI
+  VALIDATOR_KIND_ACCESSIBILITY      = 3;  // axe-core, piggybacks the UI run
+  VALIDATOR_KIND_PERFORMANCE        = 4;  // k6 against workflow endpoints
+  VALIDATOR_KIND_SECURITY_APP       = 5;  // authz/IDOR/injection on endpoints
+  VALIDATOR_KIND_SECURITY_CLUSTER   = 6;  // OWASP K8s posture (Trivy/kube-bench)
+  VALIDATOR_KIND_SECURITY_AUDIT     = 7;  // behavioural RBAC from audit log
+  VALIDATOR_KIND_NETWORK_CONFORMANCE = 8; // prober: who can actually reach whom
+  VALIDATOR_KIND_RESILIENCE         = 9;  // workflow under injected fault
+}
+
+message RunValidatorsRequest {
+  string run_id = 1;                     // brain-assigned; idempotency key
+  repeated ValidatorTask tasks = 2;
+  int32  max_parallelism = 3;            // 0 = orchestrator default
+  string namespace = 4;                  // where Jobs land
+  repeated string change_event_ids = 5;  // provenance: why this run exists
+}
+
+// ValidatorTask is a unit of work. `spec_json` is opaque to Go on purpose --
+// the orchestrator ships it to the runner as a mounted file and never reads it.
+message ValidatorTask {
+  string task_id = 1;
+  ValidatorKind kind = 2;
+
+  string image = 3;                      // runner image to schedule
+  repeated string args = 4;
+  map<string, string> env = 5;
+  string spec_json = 6;                  // OPAQUE: Intent Spec or validator config
+  string service_account = 7;            // probers need in-cluster identity
+
+  int32  timeout_seconds = 8;
+  string cpu_request = 9;
+  string memory_request = 10;
+  bool   host_network = 11;              // network probers may need this
+
+  repeated string target_workflow_ids = 12;  // for result attribution
+  repeated ObjectRef target_objects = 13;    // pods/services under test
+  double priority = 14;                      // risk score from impact analysis
+}
+
+enum ValidatorPhase {
+  VALIDATOR_PHASE_UNSPECIFIED = 0;
+  VALIDATOR_PHASE_PENDING     = 1;
+  VALIDATOR_PHASE_SCHEDULED   = 2;
+  VALIDATOR_PHASE_RUNNING     = 3;
+  VALIDATOR_PHASE_SUCCEEDED   = 4;  // ran cleanly; findings may still exist
+  VALIDATOR_PHASE_FAILED      = 5;  // assertions failed
+  VALIDATOR_PHASE_ERRORED     = 6;  // infrastructure problem, not a test signal
+  VALIDATOR_PHASE_TIMED_OUT   = 7;
+  VALIDATOR_PHASE_CANCELLED   = 8;
+}
+
+// ValidatorResult carries both the Job lifecycle (owned by Go) and the runner's
+// own structured output (owned by Python). The runner emits its payload on
+// stdout framed by a sentinel line; the orchestrator extracts it verbatim.
+// Sentinel: "###ARIADNE-RESULT###" followed by one line of JSON.
+message ValidatorResult {
+  string run_id  = 1;
+  string task_id = 2;
+  ValidatorKind kind = 3;
+  ValidatorPhase phase = 4;
+
+  google.protobuf.Timestamp started_at  = 5;
+  google.protobuf.Timestamp finished_at = 6;
+  int32  exit_code = 7;
+  string message = 8;                  // orchestrator-level error text
+
+  string result_payload_json = 9;      // OPAQUE runner output; findings live here
+  repeated ObjectRef involved_pods = 10; // exact pods that served this run
+  TimeWindow execution_window = 11;      // hand straight to the log collector
+
+  Truncation payload_truncation = 12;
+}
+
+message CancelRunRequest  { string run_id = 1; string reason = 2; }
+message CancelRunResponse { bool cancelled = 1; int32 tasks_cancelled = 2; }
+
+message GetRunStatusRequest { string run_id = 1; }
+
+message RunStatus {
+  string run_id = 1;
+  int32  total = 2;
+  int32  pending = 3;
+  int32  running = 4;
+  int32  succeeded = 5;
+  int32  failed = 6;
+  bool   complete = 7;
+  repeated ValidatorResult results = 8;
+}
+
+// ---------------------------------------------------------------------------
+// Fault injection
+// ---------------------------------------------------------------------------
+
+enum FaultKind {
+  FAULT_KIND_UNSPECIFIED = 0;
+  FAULT_KIND_LATENCY     = 1;
+  FAULT_KIND_ERROR_RATE  = 2;  // return 5xx for a fraction of requests
+  FAULT_KIND_BANDWIDTH   = 3;
+  FAULT_KIND_PARTITION   = 4;  // drop all traffic on the edge
+  FAULT_KIND_SLOW_CLOSE  = 5;  // half-open connections
+}
+
+message InjectFaultRequest {
+  string fault_id = 1;
+  FaultKind kind = 2;
+  string target_service = 3;        // service whose inbound edge we degrade
+  string target_namespace = 4;
+  int32  latency_ms = 5;
+  double jitter_ratio = 6;
+  double error_rate = 7;            // 0.0 - 1.0
+  int32  bandwidth_kbps = 8;
+  int32  duration_seconds = 9;      // 0 = until cleared
+}
+
+message InjectFaultResponse { string fault_id = 1; bool active = 2; string message = 3; }
+message ClearFaultsRequest  { repeated string fault_ids = 1; bool all = 2; }
+message ClearFaultsResponse { int32 cleared = 1; }
+message ListFaultsRequest   {}
+message ListFaultsResponse  { repeated InjectFaultRequest active = 1; }

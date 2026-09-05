@@ -1,0 +1,167 @@
+syntax = "proto3";
+
+package ariadne.v1;
+
+import "google/protobuf/timestamp.proto";
+import "ariadne/v1/common.proto";
+
+option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;ariadnev1";
+
+// VerdictService is how the brain's conclusion becomes Kubernetes state. The
+// operator writes it to a QualityAssessment CR status, which means Argo
+// Rollouts / Flux can gate on it natively -- the release decision stops being
+// a dashboard someone reads and becomes control-plane truth.
+service VerdictService {
+  rpc PublishAssessment(PublishAssessmentRequest) returns (PublishAssessmentResponse);
+  rpc GetPolicy(GetPolicyRequest) returns (QualityPolicy);
+  rpc ListAssessments(ListAssessmentsRequest) returns (ListAssessmentsResponse);
+}
+
+enum Verdict {
+  VERDICT_UNSPECIFIED  = 0;
+  VERDICT_PASS         = 1;
+  VERDICT_PASS_HEALED  = 2;  // green, but specs were repaired -- surface it
+  VERDICT_WARN         = 3;
+  VERDICT_FAIL         = 4;
+  VERDICT_BLOCKED      = 5;  // policy breach: stop the rollout
+  VERDICT_INCONCLUSIVE = 6;  // insufficient evidence -- never silently pass
+}
+
+// Adjudication is the heart of the system. Naive self-healing is a liability:
+// a test that heals around a real regression has hidden a bug. Every failure
+// must land in exactly one of these buckets, with its reasoning recorded.
+enum Adjudication {
+  ADJUDICATION_UNSPECIFIED = 0;
+  ADJUDICATION_TEST_DEFECT = 1;  // locator/selector drift -> safe to heal
+  ADJUDICATION_INTENT_DRIFT = 2; // app intentionally changed -> update the spec
+  ADJUDICATION_APP_REGRESSION = 3; // real bug -> DO NOT heal, file it, gate it
+  ADJUDICATION_ENV_FLAKE = 4;    // infra noise -> retry, do not touch the spec
+  ADJUDICATION_UNDETERMINED = 5; // escalate to a human with the evidence
+}
+
+message PublishAssessmentRequest {
+  string assessment_id = 1;
+  string run_id = 2;
+  google.protobuf.Timestamp completed_at = 3;
+
+  Verdict verdict = 4;
+  double  confidence = 5;              // 0.0 - 1.0
+  string  summary = 6;                 // human-readable, LLM-written
+  string  policy_name = 7;
+
+  repeated string change_event_ids = 8;
+  repeated ObjectRef gate_targets = 9; // Deployment/Rollout to pause or promote
+
+  repeated Finding findings = 10;
+  repeated HealRecord heals = 11;
+  QualityMetrics metrics = 12;
+}
+
+message PublishAssessmentResponse {
+  bool accepted = 1;
+  string assessment_ref = 2;           // CR name the operator created
+  bool gate_applied = 3;               // did we actually pause a rollout?
+  string message = 4;
+}
+
+enum FindingCategory {
+  FINDING_CATEGORY_UNSPECIFIED   = 0;
+  FINDING_CATEGORY_FUNCTIONAL    = 1;
+  FINDING_CATEGORY_SECURITY_APP  = 2;
+  FINDING_CATEGORY_SECURITY_K8S  = 3;
+  FINDING_CATEGORY_PERFORMANCE   = 4;
+  FINDING_CATEGORY_ACCESSIBILITY = 5;
+  FINDING_CATEGORY_RESILIENCE    = 6;
+  FINDING_CATEGORY_COVERAGE_GAP  = 7;  // untested surface appeared
+  FINDING_CATEGORY_CONFIG_DRIFT  = 8;
+}
+
+message Finding {
+  string id = 1;
+  FindingCategory category = 2;
+  Severity severity = 3;
+  string title = 4;
+  string description = 5;
+
+  // Explainability: not just "what failed" but "why, and how do we know".
+  string root_cause = 6;
+  repeated string evidence_refs = 7;   // pod/log/audit ids from EvidenceBundle
+  string reasoning = 8;                // the adjudicator's chain, in English
+  double confidence = 9;
+
+  repeated string affected_workflow_ids = 10;
+  repeated ObjectRef affected_objects = 11;
+  double business_impact_score = 12;   // from workflow criticality
+
+  Remediation remediation = 13;
+  repeated string owasp_refs = 14;     // "K03:2022", "A01:2021"
+  repeated string cwe_refs = 15;
+  string first_seen_change_id = 16;    // the change that introduced it
+}
+
+message Remediation {
+  string description = 1;
+  string patch_yaml = 2;               // e.g. a tightened Role, ready to apply
+  string patch_diff = 3;               // unified diff for source fixes
+  bool   auto_applicable = 4;
+  string runbook_url = 5;
+}
+
+// HealRecord is the audit trail of every repair. Every heal is reviewable, and
+// nothing is healed without an adjudication attached -- that is what separates
+// this from a self-healing tool that quietly buries regressions.
+message HealRecord {
+  string id = 1;
+  string spec_id = 2;
+  string step_id = 3;
+  Adjudication adjudication = 4;
+
+  string intent = 5;                   // "click the search submit button"
+  string old_binding = 6;              // selector/locator that stopped working
+  string new_binding = 7;
+  string binding_strategy = 8;         // role+name | testid | text | css | xpath
+
+  string reasoning = 9;
+  double confidence = 10;
+  repeated string supporting_change_ids = 11;
+  bool   applied = 12;                 // false when confidence < threshold
+  bool   requires_review = 13;
+  string pull_request_url = 14;
+  google.protobuf.Timestamp healed_at = 15;
+}
+
+// QualityMetrics feed the "70-80% maintenance reduction" claim with numbers
+// we actually measured rather than asserted.
+message QualityMetrics {
+  int32 workflows_total = 1;
+  int32 workflows_covered = 2;
+  int32 workflows_executed = 3;
+  int32 tests_passed = 4;
+  int32 tests_failed = 5;
+  int32 tests_healed = 6;
+  int32 regressions_caught = 7;
+  int32 false_heals_prevented = 8;     // failures we refused to heal
+  double manual_minutes_saved = 9;
+  double selection_efficiency = 10;    // 1 - (executed / total)
+  int64 run_duration_ms = 11;
+}
+
+message GetPolicyRequest { string name = 1; string namespace = 2; }
+
+// QualityPolicy mirrors the CRD spec: the human-authored statement of what
+// "good enough to release" means for this application.
+message QualityPolicy {
+  string name = 1;
+  string namespace = 2;
+  repeated string critical_workflow_ids = 3;
+  Severity block_on_severity_at_or_above = 4;
+  double  min_confidence_to_auto_heal = 5;
+  bool    block_on_new_uncovered_surface = 6;
+  int32   max_p95_latency_ms = 7;
+  double  max_error_rate = 8;
+  bool    require_accessibility_pass = 9;
+  repeated string watched_namespaces = 10;
+}
+
+message ListAssessmentsRequest  { string namespace = 1; int32 limit = 2; }
+message ListAssessmentsResponse { repeated PublishAssessmentRequest assessments = 1; }
