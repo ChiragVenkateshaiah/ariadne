@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sensor
+  namespace: ariadne-system
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: sensor}}
+  template:
+    metadata: {labels: {app: sensor}}
+    spec:
+      serviceAccountName: sensor
+      containers:
+        - name: sensor
+          image: ariadne/sensor:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 9090, name: grpc}]
+          env:
+            - {name: PORT, value: "9090"}
+          resources:
+            requests: {cpu: 20m, memory: 48Mi}
+            limits: {memory: 128Mi}
+          readinessProbe:
+            grpc: {port: 9090}
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            grpc: {port: 9090}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sensor
+  namespace: ariadne-system
+spec:
+  selector: {app: sensor}
+  ports: [{port: 9090, targetPort: 9090, name: grpc}]

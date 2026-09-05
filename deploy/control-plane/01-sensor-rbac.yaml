@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sensor
+  namespace: ariadne-system
+---
+# Cluster-wide read: the sensor watches every namespace carrying
+# ariadne.dev/watched=true (decided at runtime, not at RBAC-authoring time) as
+# well as cluster-scoped RBAC objects, so its ClusterRole is necessarily
+# cluster-wide even though what it actually reports on is narrower. This is
+# itself exactly the kind of grant the Act 3 audit-log RBAC story is built to
+# question -- "granted cluster-wide, exercises only these" -- and the sensor
+# should not be a special case for that finding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ariadne-sensor
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "configmaps", "secrets", "services", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ariadne-sensor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ariadne-sensor
+subjects:
+  - kind: ServiceAccount
+    name: sensor
+    namespace: ariadne-system

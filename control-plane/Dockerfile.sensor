@@ -1,0 +1,13 @@
+# Built from the control-plane/ directory as context (see
+# scripts/build-and-load-control-plane.sh) since the module root is here.
+FROM golang:1.25-bookworm AS build
+WORKDIR /src
+COPY control-plane/go.mod control-plane/go.sum ./
+RUN go mod download
+COPY control-plane/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/sensor ./cmd/sensor
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/sensor /sensor
+USER nonroot:nonroot
+ENTRYPOINT ["/sensor"]

@@ -8,3 +8,4 @@ brain/pb/
 *.db-shm
 .env
 bin/
+.claude/
