@@ -78,15 +78,21 @@ class AnthropicClient(LLMClient):
 
 
 class MockLLMClient(LLMClient):
-    """Returns a fixture for `purpose`, ignoring the actual prompt content.
-    Raises loudly for an unknown purpose rather than returning something
-    plausible-looking -- a silent wrong answer here would be far more
-    confusing to debug than an explicit "no fixture for this yet"."""
+    """Returns a fixture for `purpose`. A fixture is either a static dict
+    (used verbatim, ignoring the actual prompt -- appropriate when there is
+    one fixed correct answer, e.g. synth_workflows) or a callable
+    `(system, prompt) -> dict` (appropriate when the correct answer genuinely
+    depends on live, per-call content the model would have to read -- e.g.
+    resolve_intent, where the right element index depends on whatever DOM
+    snapshot this particular page load produced). Raises loudly for an
+    unknown purpose rather than returning something plausible-looking -- a
+    silent wrong answer here would be far more confusing to debug than an
+    explicit "no fixture for this yet"."""
 
-    def __init__(self, fixtures: dict[str, dict[str, Any]] | None = None):
+    def __init__(self, fixtures: dict[str, Any] | None = None):
         self._fixtures = fixtures or {}
 
-    def register(self, purpose: str, response: dict[str, Any]) -> None:
+    def register(self, purpose: str, response: Any) -> None:
         self._fixtures[purpose] = response
 
     def complete_json(self, purpose: str, system: str, prompt: str) -> dict[str, Any]:
@@ -96,7 +102,8 @@ class MockLLMClient(LLMClient):
                 "Register one (see ariadne.llm.fixtures) or set ANTHROPIC_API_KEY "
                 "to use the real client."
             )
-        return self._fixtures[purpose]
+        fixture = self._fixtures[purpose]
+        return fixture(system, prompt) if callable(fixture) else fixture
 
 
 def get_llm_client() -> LLMClient:

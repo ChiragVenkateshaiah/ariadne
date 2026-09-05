@@ -8,6 +8,9 @@ them before a real API key exists.
 
 from __future__ import annotations
 
+import json
+import re
+
 from ariadne.llm.client import MockLLMClient
 
 SYNTH_WORKFLOWS_FIXTURE = {
@@ -90,8 +93,52 @@ SYNTH_WORKFLOWS_FIXTURE = {
     ]
 }
 
+_STOPWORDS = {"the", "a", "an", "input", "field", "button", "link", "enter", "select",
+              "click", "submit", "this", "to", "of", "on", "and"}
+
+
+def _mock_resolve_intent(_system: str, prompt: str) -> dict:
+    """A deliberately simple stand-in for the resolver's LLM fallback (see
+    ariadne.resolve.resolver). Real Claude reasons about MEANING ("Find
+    flights" clearly relates to a search intent); this mock can only do two
+    honest things: (1) score elements by literal keyword overlap with the
+    intent/hint, which solves the common case of an id/class rename, and (2)
+    fall back to a structural signal -- "the only submit button on the page"
+    -- for the harder case where the button's visible text itself changed
+    (Ariadne's own Act 1 demo: "Search" -> "Find flights" has zero lexical
+    overlap with the hint "search submit button"). When neither signal
+    fires, it honestly reports no match rather than guessing -- exactly the
+    UNDETERMINED outcome a real model should also prefer over a false guess.
+    """
+    data = json.loads(prompt)
+    intent, hint, action = data.get("intent", ""), data.get("hint", ""), data.get("action", "")
+    elements = data.get("elements", [])
+
+    keywords = set(re.findall(r"[a-z]+", f"{intent} {hint}".lower())) - _STOPWORDS
+
+    best_idx, best_score = None, 0
+    for el in elements:
+        haystack = " ".join(str(el.get(f, "") or "") for f in
+                             ("aria_label", "text", "placeholder", "name", "id")).lower()
+        score = sum(1 for kw in keywords if kw in haystack)
+        if score > best_score:
+            best_idx, best_score = el.get("index"), score
+
+    if best_idx is not None:
+        return {"element_index": best_idx, "reasoning": "keyword overlap", "model": "mock"}
+
+    if action == "click":
+        submit_buttons = [el for el in elements if el.get("tag") == "button" and el.get("type") == "submit"]
+        if len(submit_buttons) == 1:
+            return {"element_index": submit_buttons[0]["index"],
+                    "reasoning": "no keyword match, but exactly one submit button exists on the page",
+                    "model": "mock"}
+
+    return {"element_index": None, "reasoning": "no keyword or structural match found", "model": "mock"}
+
 
 def default_mock_client() -> MockLLMClient:
     client = MockLLMClient()
     client.register("synth_workflows", SYNTH_WORKFLOWS_FIXTURE)
+    client.register("resolve_intent", _mock_resolve_intent)
     return client
