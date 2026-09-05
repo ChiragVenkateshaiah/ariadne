@@ -191,3 +191,144 @@ Strictly sequential. Steps 1–6 are the prize-winning core; 7–10 are upside.
   fall back to synthesising equivalent events from the watch stream — the
   analysis layer is identical.
 - **Istio is a trap** at this scale. Use toxiproxy for fault injection.
+
+---
+
+# Phase 2: Platform Engineering Depth (post-demo-core)
+
+Everything above is Phase 1 — the demo core (items 1–6 of the build order,
+plus the dashboard) — and it is done and live-verified: Sensor, World Model,
+Resolver/heal, Evidence Correlator, Adjudicator, dashboard. Phase 2 is a
+deliberate reprioritization once that core is solid, not a replacement for it.
+
+**The reprioritization, stated plainly:** UI self-healing is the pitch's hook,
+but it's also the thing every competing team will show — Playwright-plus-LLM
+is common. What isn't common is treating Kubernetes networking and API
+contracts as first-class, deeply-tested surfaces with the same rigor as the
+UI, run the way an actual platform engineering team would run them. Phase 2
+leans into that: **API testing and networking get the depth investment, not
+more UI polish.** The differentiator moves from "the demo trick" to "this
+could genuinely be an internal platform other teams onboard to."
+
+## 1. API testing, as a first-class validator (not an afterthought)
+
+UI has a full Intent Spec → Resolver → Runner pipeline. API has only
+`API_ENDPOINT` graph nodes from `catalog.py` — no spec format, no runner.
+Fix that symmetrically:
+
+- **API Intent Spec**: method, path, request body/headers, and assertions on
+  status code, response schema (shape, not just presence), and specific field
+  values — the same "intent over implementation" philosophy as UI steps, so a
+  response field reordering or an added optional field doesn't false-positive
+  a break the way a brittle exact-match would.
+- **API runner** (Python, `httpx`), dispatched as a Kubernetes Job through the
+  same `OrchestratorService` the network prober already uses — no new
+  orchestration mechanism needed, just a new runner image and
+  `VALIDATOR_KIND_API` spec shape.
+- **Contract drift detection**: snapshot each endpoint's observed
+  response shape per deployment (from real traffic, via the same structured
+  logs LogCollector already reads, or from live probe responses) and diff it
+  across a `CHANGE_CLASS_WORKLOAD_IMAGE` event — "this endpoint's response
+  shape changed the same day the image changed" is exactly the kind of
+  correlated finding the Adjudicator is built to reason about.
+- **Depth items**: boundary/fuzz testing on request inputs, idempotency
+  checks on retried writes, per-endpoint latency SLO assertions (feeds
+  directly into the Prometheus histograms in §3).
+
+## 2. Networking — treated as a platform service, not a demo script
+
+The reframe: don't build "one script that proves segmentation once." Build
+the mechanism a platform team would actually run continuously.
+
+- **NetworkPolicy as a reconciliation loop, not a one-shot generator.**
+  `security/network_policy.py` already derives policy from `CALLS` edges
+  correctly (including the NodePort external-ingress case). Extend it into a
+  continuous loop: the Sensor already emits `CHANGE_CLASS_WORKLOAD_SPEC`
+  when a new service-to-service call pattern would need a policy change: dry-run,
+  and route consequential Applys through the Adjudicator (the same
+  heal-vs-regression judgment call — a policy widening is a Finding
+  candidate, not an auto-apply) rather than a script run.
+- **Calico-native depth beyond vanilla `networking.k8s.io/v1`**: since Calico
+  is already the CNI, use its own CRDs — `GlobalNetworkPolicy` and
+  `NetworkSet` for L3–L7 and DNS-aware egress rules, and verify WireGuard
+  pod-to-pod encryption is actually active (a real zero-trust checkbox, not
+  just claimed).
+- **Ingress/Gateway API conformance**: routing rules, TLS termination, rate
+  limiting at the edge — tested the same way NetworkPolicy is: derive the
+  expectation from the graph, probe to confirm reality matches it.
+- **Chaos beyond toxiproxy latency injection**: Chaos Mesh or Litmus for
+  pod-kill, network-partition, and node-drain scenarios, with Ariadne's own
+  workflow-level assertions proving (or disproving) business continuity
+  through the failure — the resilience story generalized from "one injected
+  latency" to "arbitrary infrastructure failure modes."
+  Reconsider a service mesh (Istio/Linkerd) here, now that "demo-day risk"
+  isn't the constraint — Phase 1 correctly rejected it as a time sink, but
+  Phase 2's whole point is Kubernetes-native depth, and mTLS enforcement +
+  L7 traffic policy are real platform capabilities worth testing if time
+  allows.
+- **Self-service onboarding — the actual "PaaS" framing.** Generalize the
+  `ariadne.dev/watched=true` namespace label into a lightweight CRD (e.g.
+  `AriadneTarget`) a team applies to their own namespace to register it.
+  Applying the CR is the entire onboarding flow: World Model discovery,
+  workflow synthesis, and NetworkPolicy generation all key off it already —
+  this just turns "I configured it for them" into "they asked the platform
+  for it," which is the actual distinction between a demo and a platform.
+- **Full OWASP Kubernetes Top 10, not just K03/K07.** Current strength is
+  K03 (least privilege, via audit-log `SubjectActivity`) and K07 (network
+  segmentation). Extend: K01/K09 (workload/cluster misconfig — Trivy or
+  kube-bench, LLM-ranked rather than raw findings dumped), K02 (supply
+  chain — image signing/provenance), K05 (audit coverage gaps — already
+  self-referentially checked), K06 (broken authn/authz beyond RBAC), K08
+  (secrets hygiene — plaintext env vars, unsealed secrets), K10 (known-CVE
+  images via Trivy).
+
+## 3. Prometheus + Grafana for QE visualization
+
+The custom FastAPI/HTMX dashboard stays — it tells the *story* (the
+heal/block ledger with reasoning, the topology graph) in a way a generic
+Grafana panel can't. Prometheus/Grafana adds what that dashboard
+deliberately doesn't attempt: time-series depth, trends, and alerting — the
+signal that this is an observability-integrated platform, not only a demo
+app.
+
+- **Deploy** `kube-prometheus-stack` via Helm (Prometheus Operator + Grafana
+  + Alertmanager + kube-state-metrics) into a `monitoring` namespace.
+- **Instrument every control-plane Go service** (sensor, logcollector,
+  orchestrator) with `/metrics` via `prometheus/client_golang`: change
+  events processed by class, impact analyses computed, Job dispatch
+  latency/success rate, evidence-collection query volume.
+- **Instrument the Python brain** via `prometheus_client`: workflows
+  synthesized, resolver outcomes by tier (cache/heuristic/LLM-fallback —
+  a rising LLM-fallback rate is itself a UI-drift signal worth graphing),
+  adjudication outcomes by verdict, LLM call latency.
+- **Instrument the SUT services** (already structured-logging) with a
+  lightweight `/metrics` endpoint: request rate, error rate, latency
+  histograms — real data for both the API-testing SLO assertions above and
+  the resilience dashboards below.
+- **`ServiceMonitor`/`PodMonitor` CRs** for auto-discovery of all of the above.
+- **QE-specific Grafana dashboards** (provisioned as code, committed to the
+  repo — not hand-built in the UI):
+  - *Ariadne Overview*: workflow coverage %, heal rate, block rate, mean
+    time-to-adjudicate.
+  - *Self-Healing Health*: resolver strategy-tier distribution over time.
+  - *Network & Security Posture*: NetworkPolicy conformance pass rate,
+    least-privilege score per ServiceAccount, blocked cross-namespace
+    attempts.
+  - *Resilience*: p95/p99 latency under fault injection, error-budget burn
+    during the toxiproxy/chaos scenarios.
+  - *Release Gate*: `QualityAssessment` verdict history correlated against
+    real deploys (`CHANGE_CLASS_WORKLOAD_IMAGE` events).
+
+## Phase 2 build order
+
+Sequenced so each item stays demoable on its own if time runs out again:
+
+1. API Intent Spec + runner (symmetric with UI; reuses the Orchestrator)
+2. Prometheus + Grafana deployed, control-plane services instrumented
+   (observability should exist *before* the deeper networking work, so its
+   effects are visible while being built)
+3. NetworkPolicy reconciliation loop + Calico-native policy depth
+4. Full OWASP K8s coverage (K01/K02/K05/K06/K08/K09/K10)
+5. Chaos Mesh/Litmus scenarios beyond toxiproxy
+6. `AriadneTarget` CRD — the actual self-service onboarding flow
+7. Service mesh evaluation (stretch, only if the above lands early)
