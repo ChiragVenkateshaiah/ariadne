@@ -1,0 +1,70 @@
+# Ariadne demo cluster.
+#
+# Two deliberate non-defaults, both documented as gotchas in docs/ARCHITECTURE.md:
+#
+# 1. disableDefaultCNI: true -- kind's default CNI (kindnet) does NOT enforce
+#    NetworkPolicy. Every conformance/segmentation test would silently "pass"
+#    against it. We install Calico ourselves (see deploy/kind/install-calico.sh).
+#
+# 2. API-server audit logging is wired in via extraMounts + kubeadmConfigPatches.
+#    This is the data source for the behavioural RBAC story (K03) and
+#    change-correlated authz regressions -- the differentiator, not an add-on.
+#
+# NOTE: hostPath values below are placeholders substituted by
+# scripts/create-cluster.sh (kind resolves extraMounts.hostPath relative to
+# the CWD of `kind create cluster`, not to this file's location, so we
+# generate an absolute-path version at apply time rather than hardcoding one).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: ariadne
+networking:
+  disableDefaultCNI: true
+  podSubnet: "192.168.0.0/16"     # Calico's conventional default
+  serviceSubnet: "10.96.0.0/12"
+nodes:
+  - role: control-plane
+    extraMounts:
+      - hostPath: __AUDIT_POLICY_DIR__
+        containerPath: /etc/kubernetes/audit-policy
+        readOnly: true
+      - hostPath: __AUDIT_LOG_DIR__
+        containerPath: /var/log/ariadne-audit
+        readOnly: false
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            audit-policy-file: /etc/kubernetes/audit-policy/policy.yaml
+            audit-log-path: /var/log/ariadne-audit/audit.log
+            audit-log-format: json
+            audit-log-maxage: "1"
+            audit-log-maxbackup: "3"
+            audit-log-maxsize: "100"
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/audit-policy
+              mountPath: /etc/kubernetes/audit-policy
+              readOnly: true
+              pathType: DirectoryOrCreate
+            - name: audit-log
+              hostPath: /var/log/ariadne-audit
+              mountPath: /var/log/ariadne-audit
+              readOnly: false
+              pathType: DirectoryOrCreate
+    extraPortMappings:
+      # dashboard / ingress, exposed to the WSL host for the demo browser
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30443
+        hostPort: 8443
+        protocol: TCP
+  - role: worker
+  # A second worker was dropped: this WSL2/Docker Desktop VM runs with limited
+  # memory (~7.6GB, no .wslconfig override) and was observed wedging the
+  # control-plane node's containerd (CRI calls timing out) under load from a
+  # 3-node cluster + Calico + an unrelated container stack. One worker is
+  # enough to demonstrate multi-node behaviour (pod-to-pod across nodes,
+  # NetworkPolicy enforcement) while leaving real headroom. Add a second back
+  # if `.wslconfig` raises the memory cap (see docs/ARCHITECTURE.md gotchas).

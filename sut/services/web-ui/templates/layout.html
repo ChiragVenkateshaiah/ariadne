@@ -1,0 +1,25 @@
+{{define "layout"}}
+<!-- DELIBERATE a11y defect for the accessibility validator to catch (axe
+     rule "html-has-lang"): no lang attribute on <html>. Left in place on
+     purpose -- do not "fix" this, it is a seeded finding for the demo. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Ariadne Air</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 0.75rem; font-weight: 600; }
+    input { display: block; width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; }
+    button { margin-top: 1.25rem; padding: 0.6rem 1.4rem; font-size: 1rem; cursor: pointer; }
+    .offer { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    .price { font-size: 1.2rem; font-weight: 700; float: right; }
+    .error { color: #b00020; }
+    .success { color: #1a7f37; }
+  </style>
+</head>
+<body>
+  <h1>Ariadne Air</h1>
+  {{.Body}}
+</body>
+</html>
+{{end}}

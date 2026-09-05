@@ -11,7 +11,7 @@ option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;aria
 // lifecycle back. Deliberately dumb about test semantics: it never parses a
 // spec. That decoupling is what lets the Intent Spec format evolve daily
 // during the build without touching a line of Go.
-service Orchestrator {
+service OrchestratorService {
   rpc RunValidators(RunValidatorsRequest) returns (stream ValidatorResult);
   rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
   rpc GetRunStatus(GetRunStatusRequest) returns (RunStatus);
@@ -20,7 +20,7 @@ service Orchestrator {
 // FaultInjector controls the resilience dimension: latency, errors and
 // partitions injected between services so a business workflow can be tested
 // under realistic degradation rather than only on the happy path.
-service FaultInjector {
+service FaultInjectorService {
   rpc InjectFault(InjectFaultRequest) returns (InjectFaultResponse);
   rpc ClearFaults(ClearFaultsRequest) returns (ClearFaultsResponse);
   rpc ListFaults(ListFaultsRequest) returns (ListFaultsResponse);

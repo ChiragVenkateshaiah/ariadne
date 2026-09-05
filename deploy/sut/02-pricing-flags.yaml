@@ -1,0 +1,12 @@
+# The Act 2 demo lever: flip rounding_mode to FLOOR (`kubectl apply` or
+# `kubectl patch configmap`) to introduce the pricing regression live, with no
+# image change and no pod restart. pricing-svc re-reads this file on every
+# request; kubelet syncs ConfigMap volume changes to the pod within ~60-90s.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pricing-flags
+  namespace: travel
+data:
+  flags.json: |
+    {"rounding_mode": "HALF_UP"}

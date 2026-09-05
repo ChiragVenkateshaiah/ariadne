@@ -1,0 +1,8 @@
+{{define "confirmation-content"}}
+{{if eq .Status "CONFIRMED"}}
+  <p class="success" data-testid="booking-status">Booking confirmed! Reference: <strong>{{.BookingID}}</strong></p>
+{{else}}
+  <p class="error" data-testid="booking-status">Booking failed: {{.Reason}}</p>
+{{end}}
+<p><a href="/">&larr; Book another flight</a></p>
+{{end}}

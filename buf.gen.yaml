@@ -9,10 +9,17 @@ plugins:
   - remote: buf.build/grpc/go
     out: control-plane/gen
     opt: paths=source_relative
-  # Python intelligence plane
+  # Python intelligence plane. Generated code imports as `ariadne.v1.xxx_pb2`
+  # (protoc-gen-python derives this from the .proto file's own path, i.e.
+  # "ariadne/v1/xxx.proto" -- NOT from the `out` dir). Our hand-written code
+  # is also top-level package `ariadne` (brain/ariadne/...). Both trees are
+  # merged at runtime as a single PEP 420 namespace package -- see
+  # brain/ariadne/__init__.py (deliberately absent) and brain/README.md.
+  # DO NOT nest this under brain/ariadne/pb: that doubles the "ariadne"
+  # segment (brain/ariadne/pb/ariadne/v1/...) instead of merging with it.
   - remote: buf.build/protocolbuffers/python
-    out: brain/ariadne/pb
+    out: brain/pb
   - remote: buf.build/protocolbuffers/pyi
-    out: brain/ariadne/pb
+    out: brain/pb
   - remote: buf.build/grpc/python
-    out: brain/ariadne/pb
+    out: brain/pb

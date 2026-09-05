@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: web-ui, namespace: travel}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ui
+  namespace: travel
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web-ui}}
+  template:
+    metadata: {labels: {app: web-ui}}
+    spec:
+      serviceAccountName: web-ui
+      containers:
+        - name: web-ui
+          image: ariadne/web-ui:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8080}]
+          env:
+            - {name: PORT, value: "8080"}
+            - {name: SEARCH_API_URL, value: "http://search-api:8081"}
+            - {name: BOOKING_API_URL, value: "http://booking-api:8083"}
+            # UI_VARIANT intentionally unset here -- baseline is v1. The demo
+            # flips this live: kubectl set env deployment/web-ui UI_VARIANT=v2
+          resources:
+            requests: {cpu: 10m, memory: 24Mi}
+            limits: {memory: 64Mi}
+          readinessProbe: {httpGet: {path: /health, port: 8080}, initialDelaySeconds: 2, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: 8080}, initialDelaySeconds: 5, periodSeconds: 10}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: web-ui, namespace: travel}
+spec:
+  type: NodePort
+  selector: {app: web-ui}
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30080   # matches deploy/kind/cluster.yaml extraPortMappings -> hostPort 8080

@@ -1,0 +1,29 @@
+{{define "search-content"}}
+{{if .UIVariantV2}}
+<form action="/search" method="get">
+  <label for="origin-field">Origin airport</label>
+  <input id="origin-field" name="origin" type="text" placeholder="e.g. LHR" required>
+
+  <label for="destination-field">Destination airport</label>
+  <input id="destination-field" name="destination" type="text" placeholder="e.g. JFK" required>
+
+  <label for="depart-date-field">Departure date</label>
+  <input id="depart-date-field" name="date" type="date" required>
+
+  <button id="find-flights-btn" type="submit">Find flights</button>
+</form>
+{{else}}
+<form action="/search" method="get">
+  <label for="origin">Origin airport</label>
+  <input id="origin" name="origin" type="text" placeholder="e.g. LHR" required>
+
+  <label for="destination">Destination airport</label>
+  <input id="destination" name="destination" type="text" placeholder="e.g. JFK" required>
+
+  <label for="depart-date">Departure date</label>
+  <input id="depart-date" name="date" type="date" required>
+
+  <button id="search-btn" type="submit">Search</button>
+</form>
+{{end}}
+{{end}}

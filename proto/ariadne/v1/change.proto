@@ -9,7 +9,7 @@ option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;aria
 
 // ChangeStream is the Go sensor's outbound surface. The brain subscribes once
 // at startup and consumes for the life of the process.
-service ChangeStream {
+service ChangeStreamService {
   // Subscribe opens a long-lived server stream of normalized change events.
   // The sensor replays from `since` (or from its buffer head) before switching
   // to live tailing, so a brain restart never misses a window.

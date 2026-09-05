@@ -16,7 +16,7 @@ option go_package = "github.com/chirag/ariadne/control-plane/gen/ariadne/v1;aria
 // and
 //   "pricing-svc threw NPE at PriceEngine.java:88, 4 minutes after ConfigMap
 //    pricing-flags changed rounding_mode HALF_UP -> FLOOR".
-service LogCollector {
+service LogCollectorService {
   rpc CollectEvidence(CollectEvidenceRequest) returns (EvidenceBundle);
   rpc StreamPodLogs(StreamPodLogsRequest) returns (stream LogLine);
   rpc QueryAuditLog(QueryAuditLogRequest) returns (QueryAuditLogResponse);

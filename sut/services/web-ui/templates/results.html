@@ -1,0 +1,20 @@
+{{define "results-content"}}
+<h2>Flights: {{.Origin}} &rarr; {{.Destination}} on {{.Date}}</h2>
+{{if .Error}}
+  <p class="error">{{.Error}}</p>
+{{else if not .Offers}}
+  <p>No flights found.</p>
+{{else}}
+  {{range .Offers}}
+  <div class="offer" data-flight-id="{{.FlightID}}">
+    <strong>{{.Airline}}</strong> &middot; {{.Origin}} &rarr; {{.Destination}}
+    <br>
+    Departs {{.DepartAt}} &middot; Arrives {{.ArriveAt}}
+    <span class="price" data-testid="offer-price">{{printf "%.2f" .Amount}} {{.Currency}}</span>
+    <br>
+    <a href="/book?flight_id={{.FlightID}}&amount={{.Amount}}&currency={{.Currency}}&origin={{.Origin}}&destination={{.Destination}}&depart_at={{.DepartAt}}">Book this flight</a>
+  </div>
+  {{end}}
+{{end}}
+<p><a href="/">&larr; New search</a></p>
+{{end}}

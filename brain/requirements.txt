@@ -1,0 +1,33 @@
+# Ariadne intelligence plane. Pinned where correctness depends on the version
+# (grpc/protobuf must match what buf's remote plugins generated); loose
+# elsewhere so day-to-day iteration isn't blocked on exact patch versions.
+
+# --- gRPC contract (generated code in ariadne/pb/) --------------------------
+grpcio>=1.68
+grpcio-tools>=1.68
+protobuf>=5.28
+
+# --- world model -------------------------------------------------------
+networkx>=3.3
+
+# --- test execution ------------------------------------------------------
+playwright>=1.47
+
+# --- LLM client ------------------------------------------------------------
+anthropic>=0.40
+
+# --- service scaffolding ----------------------------------------------------
+fastapi>=0.115
+uvicorn[standard]>=0.32
+httpx>=0.27
+pydantic>=2.9
+
+# --- utilities ---------------------------------------------------------
+python-ulid>=2.7
+PyYAML>=6.0
+python-dotenv>=1.0
+
+# --- dev/test ------------------------------------------------------------
+pytest>=8.3
+pytest-asyncio>=0.24
+ruff>=0.7

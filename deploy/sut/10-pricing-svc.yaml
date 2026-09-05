@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: pricing-svc, namespace: travel}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pricing-svc
+  namespace: travel
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: pricing-svc}}
+  template:
+    metadata: {labels: {app: pricing-svc}}
+    spec:
+      serviceAccountName: pricing-svc
+      containers:
+        - name: pricing-svc
+          image: ariadne/pricing-svc:dev
+          imagePullPolicy: IfNotPresent
+          ports: [{containerPort: 8082}]
+          env:
+            - {name: PORT, value: "8082"}
+          volumeMounts:
+            - {name: flags, mountPath: /etc/pricing, readOnly: true}
+          resources:
+            requests: {cpu: 10m, memory: 24Mi}
+            limits: {memory: 64Mi}
+          readinessProbe: {httpGet: {path: /health, port: 8082}, initialDelaySeconds: 2, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: 8082}, initialDelaySeconds: 5, periodSeconds: 10}
+      volumes:
+        - name: flags
+          configMap: {name: pricing-flags}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: pricing-svc, namespace: travel}
+spec:
+  selector: {app: pricing-svc}
+  ports: [{port: 8082, targetPort: 8082}]

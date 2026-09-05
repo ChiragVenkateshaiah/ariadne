@@ -1,0 +1,69 @@
+# API-server audit policy for Ariadne's behavioural security analysis.
+#
+# Goal: capture enough to do real RBAC-by-observation (SubjectActivity,
+# least-privilege recommendations, change-correlated 403 spikes) without
+# drowning the collector in status-only noise. Tuned deliberately, not left
+# at a default.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages:
+  - RequestReceived     # only completed requests -- we want the outcome, not the intent
+rules:
+  # Secrets/ConfigMaps: log metadata only, never request/response bodies.
+  # We want "who read this Secret and when", never the Secret's contents.
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+
+  # exec/attach/portforward into a pod is exactly the OWASP K8s K06 signal
+  # ("compromised pod exec into another") -- capture the request body so we
+  # can see the actual command that was run.
+  - level: Request
+    resources:
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+
+  # RBAC objects themselves: full request bodies. A RoleBinding widening is a
+  # ChangeEvent from the sensor; the matching audit Request record is what
+  # lets us attribute *who* did it and *what* they granted.
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "clusterroles", "rolebindings", "clusterrolebindings"]
+
+  # NetworkPolicy edits: same reasoning, for K07 segmentation posture.
+  - level: RequestResponse
+    resources:
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+
+  # Everything else service accounts do: Metadata level is enough to build
+  # SubjectActivity (verb, resource, namespace, response code) without the
+  # payload volume of full bodies for routine GET/LIST/WATCH traffic.
+  - level: Metadata
+    userGroups: ["system:serviceaccounts"]
+    omitStages:
+      - RequestReceived
+
+  # Authenticated human/CI writes not covered above: Metadata, still useful
+  # for provenance (who deployed what, when).
+  - level: Metadata
+    verbs: ["create", "update", "patch", "delete"]
+
+  # Drop the high-volume, low-value read chatter from system components so
+  # the log stays legible instead of 95% kubelet/kube-controller-manager noise.
+  - level: None
+    users:
+      - "system:kube-scheduler"
+      - "system:kube-controller-manager"
+      - "system:kube-proxy"
+    verbs: ["get", "list", "watch"]
+
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+
+  # Catch-all: Metadata so nothing silently falls outside the log.
+  - level: Metadata

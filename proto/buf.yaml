@@ -6,6 +6,12 @@ lint:
     - STANDARD
   except:
     - PACKAGE_VERSION_SUFFIX
+    # Streaming/plain RPCs intentionally return domain types (ChangeEvent,
+    # LogLine, ValidatorResult, ...) directly rather than a dedicated wrapper
+    # message per RPC. Wrapper boilerplate buys future-proofing we don't need
+    # yet; revisit if a response ever needs metadata the domain type can't hold.
+    - RPC_RESPONSE_STANDARD_NAME
+    - RPC_REQUEST_RESPONSE_UNIQUE
 breaking:
   use:
     - FILE

@@ -1,0 +1,20 @@
+{{define "book-content"}}
+<h2>Book flight {{.FlightID}}</h2>
+<p>{{.Origin}} &rarr; {{.Destination}} &middot; <span class="price">{{printf "%.2f" .Amount}} {{.Currency}}</span></p>
+<form action="/book" method="post">
+  <input type="hidden" name="flight_id" value="{{.FlightID}}">
+  <input type="hidden" name="amount" value="{{.Amount}}">
+  <input type="hidden" name="currency" value="{{.Currency}}">
+  <input type="hidden" name="origin" value="{{.Origin}}">
+  <input type="hidden" name="destination" value="{{.Destination}}">
+  <input type="hidden" name="depart_at" value="{{.DepartAt}}">
+
+  <label for="passenger-name">Passenger name</label>
+  <input id="passenger-name" name="passenger_name" type="text" required>
+
+  <label for="card-number">Card number (last 4 digits)</label>
+  <input id="card-number" name="card_last4" type="text" maxlength="4" pattern="[0-9]{4}" required>
+
+  <button id="confirm-booking-btn" type="submit">Confirm booking</button>
+</form>
+{{end}}
