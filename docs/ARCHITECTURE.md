@@ -332,3 +332,98 @@ Sequenced so each item stays demoable on its own if time runs out again:
 5. Chaos Mesh/Litmus scenarios beyond toxiproxy
 6. `AriadneTarget` CRD — the actual self-service onboarding flow
 7. Service mesh evaluation (stretch, only if the above lands early)
+
+---
+
+# Phase 3: Production & Hiring-Grade Platform
+
+The goal shifted, explicitly: this is no longer only a hackathon entry, it's
+meant to get Amadeus's attention as a hiring signal when posted publicly
+(video + GitHub link). Those two goals are correlated but not identical —
+"technically impressive live demo" and "I would trust this person with
+production code" are judged on different evidence. Phase 3 is the second
+kind of evidence. **Interleaved with Phase 2, not after it**: item 1 below
+starts immediately, as a safety net under all further Phase 2 work, not a
+final polish pass once features are "done."
+
+## 1. Engineering rigor (first, interleaved with Phase 2 — do not defer)
+
+- **Go test suites**: `diff.go`, `classify.go`, `references.go` (the
+  ConfigMap→workload resolution), `impact.py`'s traversal logic — all
+  highly-testable pure functions with no live cluster needed.
+- **Python pytest suites**: `graph/store.py` (upsert confidence semantics),
+  `ingest.py` (fed a fixture `ChangeEvent`, no live sensor needed),
+  `impact.py`, `adjudicator.py` (exact Act 1/Act 2 scenarios as real test
+  cases, not just something I ran once by hand), `resolver.py` (Playwright's
+  own test fixtures can drive a real headless page without a cluster).
+- **GitHub Actions CI**: on every push — `go build`/`vet`/`test`, `ruff` +
+  `pytest`, `buf lint` + `buf breaking` (catch an accidental wire-incompatible
+  proto change before it ships). Badge on the README.
+- **The single most convincing thing to add**: a CI job that spins up kind
+  in the runner and executes the actual Act 1/Act 2 scenario end-to-end as
+  an automated regression test. This is the difference between "I demoed
+  this once" and "this is continuously proven to work" — exactly the
+  distinction a platform engineering hire needs to demonstrate.
+
+## 2. Production deployment story
+
+- **Helm chart** for the full control plane (sensor, logcollector,
+  orchestrator), parameterized per environment (dev/staging/prod) — replaces
+  the current raw-YAML-per-component manifests for anything beyond this demo
+  cluster.
+- **Leader election** for the Sensor if ever run with >1 replica (avoids
+  duplicate ChangeEvent processing) — `client-go`'s `leaderelection` package.
+- **PodDisruptionBudgets**, resource requests/limits tuned and *documented
+  with rationale* (not just copied numbers).
+- **NetworkPolicies for Ariadne's own `ariadne-system` namespace.** Pointed
+  gap worth closing: we generate least-privilege policies for the SUT but
+  have none protecting our own control plane yet — this is exactly the kind
+  of self-referential rigor (like the K05 "is our own audit logging
+  adequate" check) that signals real security thinking rather than a demo
+  script.
+- **A documented path to a real cloud cluster** (EKS/GKE/AKS) — even without
+  actually deploying there, writing out exactly what changes (audit log
+  path and format differ per managed control plane, NodePort → real
+  LoadBalancer/Ingress, IRSA/Workload Identity instead of kind's simplified
+  RBAC) is itself a credible signal of production awareness.
+
+## 3. The differentiator Amadeus specifically would recognize
+
+- **Production-traffic-derived workflow discovery.** Right now Workflow
+  synthesis comes from an LLM reading a hand-authored catalog. Add a second,
+  stronger source: real user journeys reconstructed from `trace_id`
+  correlation across services — every SUT service already stamps trace_id
+  into its structured logs specifically for this (see
+  `sut/shared/logging.go`). "We don't guess business workflows, we observe
+  them from live traffic" is a materially stronger production claim than
+  LLM inference alone, and it's a natural extension of infrastructure
+  that already exists.
+- **Real progressive-delivery integration.** Build the `QualityAssessment`
+  CRD + operator (sketched in Phase 1 but not yet built) far enough that its
+  status genuinely gates an Argo Rollouts canary promotion — the release
+  gate stops being "a verdict we print" and becomes real cluster state
+  another controller consumes.
+- **Continuous synthetic canaries.** Run the healed, adjudicated workflow
+  suite on a schedule against a running environment, not only on-change —
+  "quality as a continuously monitored service" with an SLO/uptime-style
+  view, not only "quality as a CI gate."
+- **An honest ROI panel.** The original problem statement's "70-80% manual
+  maintenance reduction" claim deserves a real calculator, not just an
+  assertion: estimated manual-fix time avoided (heals × an assumption we
+  state plainly, as `dashboard/app.py`'s `MINUTES_SAVED_PER_HEAL` already
+  does) versus actual heal/adjudication activity, presented as a business
+  metric a non-engineer reviewer can read in five seconds.
+
+## 4. The "notice me" polish
+
+- **README rewrite**: the demo video/GIF at the very top (10-second first
+  impression), CI status + license badges, a real architecture diagram
+  (rendered, not only prose — Mermaid renders natively on GitHub).
+- **License**: Apache 2.0 (patent grant matters to a company evaluating
+  whether to look closely at, or eventually reference, the code).
+- **Explicit framing to Amadeus's own domain.** Not incidental that the SUT
+  is a flight-booking app — say so directly: this was built as a travel-tech
+  QA platform on purpose, exercising the exact business domain a reviewer
+  from Amadeus would recognize immediately.
+- **Clean project hygiene**: CONTRIBUTING.md, issue templates — signals this
+  is run like a maintained project, not a one-shot script dump.
