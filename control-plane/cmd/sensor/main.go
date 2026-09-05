@@ -15,6 +15,7 @@ import (
 	"time"
 
 	ariadnev1 "github.com/chirag/ariadne/control-plane/gen/ariadne/v1"
+	"github.com/chirag/ariadne/control-plane/internal/metrics"
 	"github.com/chirag/ariadne/control-plane/internal/watch"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -67,6 +68,7 @@ func main() {
 	healthSrv := health.NewServer()
 	healthSrv.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthSrv)
+	metrics.Serve(ctx, logger, "9100")
 
 	go func() {
 		<-ctx.Done()

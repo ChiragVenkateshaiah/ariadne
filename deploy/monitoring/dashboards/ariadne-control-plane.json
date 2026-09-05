@@ -1,0 +1,96 @@
+{
+  "title": "Ariadne / Control Plane",
+  "uid": "ariadne-control-plane",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": ["ariadne"],
+  "time": {"from": "now-30m", "to": "now"},
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {"name": "datasource", "type": "datasource", "query": "prometheus", "current": {}}
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "title": "Change events / sec (by class)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 15, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"expr": "sum(rate(ariadne_sensor_change_events_total[5m])) by (change_class)", "legendFormat": "{{change_class}}"}]
+    },
+    {
+      "id": 2, "title": "Change events / sec (by operation)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "line", "fillOpacity": 15}}, "overrides": []},
+      "targets": [{"expr": "sum(rate(ariadne_sensor_change_events_total[5m])) by (operation)", "legendFormat": "{{operation}}"}]
+    },
+    {
+      "id": 3, "title": "Informers synced", "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "NOT SYNCED", "color": "red"}, "1": {"text": "SYNCED", "color": "green"}}}]}, "overrides": []},
+      "targets": [{"expr": "ariadne_sensor_informers_synced"}]
+    },
+    {
+      "id": 4, "title": "ChangeStream subscribers", "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "targets": [{"expr": "ariadne_sensor_broker_subscribers"}]
+    },
+    {
+      "id": 5, "title": "Resync noise suppressed / sec", "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [{"expr": "rate(ariadne_sensor_change_events_noise_total[5m])"}]
+    },
+    {
+      "id": 6, "title": "Evidence requests / sec", "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [{"expr": "rate(ariadne_logcollector_evidence_requests_total[5m])"}]
+    },
+    {
+      "id": 7, "title": "Audit query duration (p95)", "type": "stat",
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [{"expr": "histogram_quantile(0.95, sum(rate(ariadne_logcollector_audit_query_duration_seconds_bucket[5m])) by (le))"}]
+    },
+    {
+      "id": 8, "title": "Validator Jobs dispatched / sec (by kind, phase)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "reqps", "custom": {"drawStyle": "bars", "stacking": {"mode": "normal"}}}, "overrides": []},
+      "targets": [{"expr": "sum(rate(ariadne_orchestrator_jobs_dispatched_total[5m])) by (kind, phase)", "legendFormat": "{{kind}} / {{phase}}"}]
+    },
+    {
+      "id": 9, "title": "Validator Job duration (p50 / p95)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line"}}, "overrides": []},
+      "targets": [
+        {"expr": "histogram_quantile(0.50, sum(rate(ariadne_orchestrator_job_duration_seconds_bucket[5m])) by (le, kind))", "legendFormat": "p50 {{kind}}"},
+        {"expr": "histogram_quantile(0.95, sum(rate(ariadne_orchestrator_job_duration_seconds_bucket[5m])) by (le, kind))", "legendFormat": "p95 {{kind}}"}
+      ]
+    },
+    {
+      "id": 10, "title": "Control-plane pod memory (working set)", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [{"expr": "sum(container_memory_working_set_bytes{namespace=\"ariadne-system\", container!=\"\"}) by (pod)", "legendFormat": "{{pod}}"}]
+    },
+    {
+      "id": 11, "title": "Control-plane pod CPU", "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "datasource": {"type": "prometheus", "uid": "$datasource"},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10}}, "overrides": []},
+      "targets": [{"expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"ariadne-system\", container!=\"\"}[5m])) by (pod)", "legendFormat": "{{pod}}"}]
+    }
+  ]
+}

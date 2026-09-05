@@ -23,7 +23,7 @@ spec:
         - name: logcollector
           image: ariadne/logcollector:dev
           imagePullPolicy: IfNotPresent
-          ports: [{containerPort: 9091, name: grpc}]
+          ports: [{containerPort: 9091, name: grpc}, {containerPort: 9101, name: metrics}]
           env:
             - {name: PORT, value: "9091"}
             - {name: SENSOR_ADDR, value: "sensor.ariadne-system:9090"}
@@ -50,6 +50,9 @@ kind: Service
 metadata:
   name: logcollector
   namespace: ariadne-system
+  labels: {app: logcollector}  # see deploy/control-plane/02-sensor-deployment.yaml's comment
 spec:
   selector: {app: logcollector}
-  ports: [{port: 9091, targetPort: 9091, name: grpc}]
+  ports:
+    - {port: 9091, targetPort: 9091, name: grpc}
+    - {port: 9101, targetPort: 9101, name: metrics}

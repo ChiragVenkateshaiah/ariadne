@@ -14,7 +14,7 @@ spec:
         - name: sensor
           image: ariadne/sensor:dev
           imagePullPolicy: IfNotPresent
-          ports: [{containerPort: 9090, name: grpc}]
+          ports: [{containerPort: 9090, name: grpc}, {containerPort: 9100, name: metrics}]
           env:
             - {name: PORT, value: "9090"}
           resources:
@@ -34,6 +34,13 @@ kind: Service
 metadata:
   name: sensor
   namespace: ariadne-system
+  # A ServiceMonitor's selector matches labels on the Service OBJECT ITSELF,
+  # not the pod-selecting spec.selector below (a genuinely easy field to
+  # conflate) -- without this, deploy/monitoring/servicemonitors.yaml's
+  # `selector: {matchLabels: {app: sensor}}` matches nothing at all.
+  labels: {app: sensor}
 spec:
   selector: {app: sensor}
-  ports: [{port: 9090, targetPort: 9090, name: grpc}]
+  ports:
+    - {port: 9090, targetPort: 9090, name: grpc}
+    - {port: 9100, targetPort: 9100, name: metrics}

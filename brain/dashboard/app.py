@@ -13,10 +13,16 @@ import os
 import sqlite3
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    CollectorRegistry,
+    Gauge,
+    generate_latest,
+)
 
 from ariadne.graph import store
 
@@ -32,6 +38,20 @@ app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 # not a number we pretend to have measured precisely for a demo system.
 MINUTES_SAVED_PER_HEAL = 15
 
+# The actual "QE visualization" data (docs/ARCHITECTURE.md Phase 2 sec. 3) --
+# unlike the Go control plane's in-process counters, this comes from a
+# database snapshot, so these are Gauges set fresh on every /metrics scrape
+# rather than incremented as events happen. A dedicated registry (rather
+# than prometheus_client's global default) keeps this importable multiple
+# times in tests without "duplicate metric" errors.
+_METRICS_REGISTRY = CollectorRegistry()
+_G_WORKFLOWS_TOTAL = Gauge("ariadne_workflows_total", "Workflows known to the World Model.", registry=_METRICS_REGISTRY)
+_G_WORKFLOWS_COVERED = Gauge("ariadne_workflows_covered", "Workflows with at least one active test spec.", registry=_METRICS_REGISTRY)
+_G_HEALS_TOTAL = Gauge("ariadne_heals_total", "Heals recorded by the Adjudicator.", registry=_METRICS_REGISTRY)
+_G_FINDINGS_BLOCKED = Gauge("ariadne_findings_blocked_total", "HIGH/CRITICAL findings -- regressions caught, not healed.", registry=_METRICS_REGISTRY)
+_G_CHANGES_OBSERVED = Gauge("ariadne_changes_observed_total", "Change events observed from the live cluster.", registry=_METRICS_REGISTRY)
+_G_MANUAL_MINUTES_SAVED = Gauge("ariadne_manual_minutes_saved_total", "Estimated manual triage minutes avoided via heals.", registry=_METRICS_REGISTRY)
+
 
 def db() -> sqlite3.Connection:
     return store.connect(DB_PATH)
@@ -40,6 +60,20 @@ def db() -> sqlite3.Connection:
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     return templates.TemplateResponse(request, "index.html", {})
+
+
+@app.get("/metrics")
+def metrics():
+    conn = db()
+    _G_WORKFLOWS_TOTAL.set(_scalar(conn, "SELECT COUNT(*) FROM workflows"))
+    _G_WORKFLOWS_COVERED.set(_scalar(conn, "SELECT COUNT(DISTINCT workflow_id) FROM test_specs WHERE active = 1"))
+    heals = _scalar(conn, "SELECT COUNT(*) FROM heals")
+    _G_HEALS_TOTAL.set(heals)
+    _G_FINDINGS_BLOCKED.set(_scalar(conn, "SELECT COUNT(*) FROM findings WHERE severity IN ('HIGH','CRITICAL')"))
+    _G_CHANGES_OBSERVED.set(_scalar(conn, "SELECT COUNT(*) FROM change_events"))
+    _G_MANUAL_MINUTES_SAVED.set(heals * MINUTES_SAVED_PER_HEAL)
+    conn.close()
+    return Response(content=generate_latest(_METRICS_REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/api/graph")

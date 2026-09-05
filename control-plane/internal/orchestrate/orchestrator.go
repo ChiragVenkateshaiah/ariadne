@@ -77,9 +77,18 @@ func (s *Server) RunValidators(req *ariadnev1.RunValidatorsRequest, stream ariad
 	return nil
 }
 
-func (s *Server) runOneTask(ctx context.Context, ns, runID string, task *ariadnev1.ValidatorTask) *ariadnev1.ValidatorResult {
+func (s *Server) runOneTask(ctx context.Context, ns, runID string, task *ariadnev1.ValidatorTask) (result *ariadnev1.ValidatorResult) {
 	startedAt := time.Now()
 	jobName := fmt.Sprintf("ariadne-%s", sanitizeName(task.TaskId))
+	kindLabel := task.Kind.String()
+
+	// One deferred recording point covers every return below, including the
+	// early error path -- a metric that only fires on the happy path would
+	// silently under-count exactly the failures worth alerting on.
+	defer func() {
+		jobsDispatchedTotal.WithLabelValues(kindLabel, result.Phase.String()).Inc()
+		jobDurationSeconds.WithLabelValues(kindLabel).Observe(time.Since(startedAt).Seconds())
+	}()
 
 	timeout := time.Duration(task.TimeoutSeconds) * time.Second
 	if timeout <= 0 {

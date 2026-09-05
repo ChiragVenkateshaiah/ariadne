@@ -14,7 +14,7 @@ spec:
         - name: orchestrator
           image: ariadne/orchestrator:dev
           imagePullPolicy: IfNotPresent
-          ports: [{containerPort: 9092, name: grpc}]
+          ports: [{containerPort: 9092, name: grpc}, {containerPort: 9102, name: metrics}]
           env:
             - {name: PORT, value: "9092"}
             - {name: DEFAULT_NAMESPACE, value: "travel"}
@@ -29,6 +29,9 @@ kind: Service
 metadata:
   name: orchestrator
   namespace: ariadne-system
+  labels: {app: orchestrator}  # see deploy/control-plane/02-sensor-deployment.yaml's comment
 spec:
   selector: {app: orchestrator}
-  ports: [{port: 9092, targetPort: 9092, name: grpc}]
+  ports:
+    - {port: 9092, targetPort: 9092, name: grpc}
+    - {port: 9102, targetPort: 9102, name: metrics}

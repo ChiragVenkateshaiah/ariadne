@@ -73,6 +73,7 @@ func (s *Sensor) Start(ctx context.Context) error {
 		}
 	}
 	s.logger.Info("all informer caches synced", "watched_resources", len(Resources))
+	informersSynced.Set(1)
 
 	_ = deployInformer // kept started via the factory; read through s.deployments()
 	return nil
@@ -157,6 +158,7 @@ func (s *Sensor) handleEvent(res watchedResource, op ariadnev1.ChangeOperation, 
 	// suppress Add/Delete this way -- those are meaningful even with an
 	// empty diff (e.g. deleting an object we never saw modified).
 	if op == ariadnev1.ChangeOperation_CHANGE_OPERATION_MODIFIED && len(diffs) == 0 {
+		changeEventsNoiseTotal.Inc()
 		return
 	}
 
@@ -209,5 +211,6 @@ func (s *Sensor) handleEvent(res watchedResource, op ariadnev1.ChangeOperation, 
 		"kind", ref.GetKind(), "namespace", ref.GetNamespace(), "name", ref.GetName(),
 		"fields_changed", len(diffs))
 
+	changeEventsTotal.WithLabelValues(changeClass, op.String()).Inc()
 	s.broker.Publish(ev)
 }

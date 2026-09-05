@@ -1,0 +1,57 @@
+# kube-prometheus-stack values for the Ariadne demo cluster. Deliberately
+# lightweight: this is a 2-node kind cluster that also runs the SUT and
+# Ariadne's own control plane -- see docs/ARCHITECTURE.md's memory-pressure
+# gotchas from earlier in the build. No persistent storage (demo cluster,
+# data loss on restart is acceptable); resource requests kept modest.
+
+grafana:
+  enabled: true
+  adminPassword: ariadne  # demo-only; never do this for a real deployment
+  resources:
+    # 256Mi was measured OOMKilling this Grafana version (13.x) within
+    # minutes of startup -- modern Grafana plus two sidecar containers in
+    # the same pod needs real headroom, not a token limit.
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 768Mi}
+  persistence:
+    enabled: false
+  # Ariadne-specific dashboards are provisioned as code (JSON committed to
+  # deploy/monitoring/dashboards/), loaded via the chart's standard sidecar:
+  # any ConfigMap labeled grafana_dashboard=1 in this namespace is picked up
+  # automatically -- no Helm upgrade needed to add or change a dashboard.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      folder: /tmp/dashboards
+      provider:
+        name: ariadne
+        folder: Ariadne
+
+prometheus:
+  prometheusSpec:
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+    retention: 6h  # demo cluster; we don't need long retention
+    storageSpec: {}  # emptyDir (ephemeral) -- no PersistentVolume needed for the demo
+
+alertmanager:
+  enabled: false  # no on-call for a demo cluster; skip to save resources
+
+nodeExporter:
+  enabled: true
+  resources:
+    requests: {cpu: 20m, memory: 32Mi}
+
+kubeStateMetrics:
+  enabled: true
+
+# These target real control-plane components (kube-scheduler, etcd, etc.)
+# that kind doesn't expose the way a full cluster does -- disable to avoid
+# permanently-red targets cluttering the dashboard for no useful signal.
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeEtcd: {enabled: false}
+kubeProxy: {enabled: false}

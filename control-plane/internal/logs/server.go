@@ -34,6 +34,7 @@ func NewServer(client kubernetes.Interface, changeStream ariadnev1.ChangeStreamS
 }
 
 func (s *Server) CollectEvidence(ctx context.Context, req *ariadnev1.CollectEvidenceRequest) (*ariadnev1.EvidenceBundle, error) {
+	evidenceRequestsTotal.Inc()
 	bundle := &ariadnev1.EvidenceBundle{
 		CorrelationId: req.CorrelationId,
 		Window:        req.Window,
@@ -168,6 +169,9 @@ func (s *Server) QueryAuditLog(_ context.Context, req *ariadnev1.QueryAuditLogRe
 	if s.auditLogPath == "" {
 		return &ariadnev1.QueryAuditLogResponse{Truncation: &ariadnev1.Truncation{Reason: "audit log not configured on this collector"}}, nil
 	}
+	queryStart := time.Now()
+	defer func() { auditQueryDurationSeconds.Observe(time.Since(queryStart).Seconds()) }()
+
 	f := auditFilter{
 		window: req.Window, verbs: toSet(req.Verbs), resources: toSet(req.Resources),
 		namespaces: toSet(req.Namespaces), userNames: toSet(req.UserNames), responseCodes: toIntSet(req.ResponseCodes),

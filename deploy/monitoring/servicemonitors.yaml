@@ -1,0 +1,43 @@
+# Prometheus (via the Prometheus Operator installed by kube-prometheus-stack)
+# only watches ServiceMonitors labeled to match its release, per the chart's
+# default serviceMonitorSelectorNilUsesHelmValues=true -- hence
+# `release: kube-prometheus-stack` on all three below, matching the Helm
+# release name used in scripts/install-monitoring.sh.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ariadne-sensor
+  namespace: monitoring
+  labels: {release: kube-prometheus-stack}
+spec:
+  namespaceSelector: {matchNames: [ariadne-system]}
+  selector: {matchLabels: {app: sensor}}
+  endpoints:
+    - port: metrics
+      interval: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ariadne-logcollector
+  namespace: monitoring
+  labels: {release: kube-prometheus-stack}
+spec:
+  namespaceSelector: {matchNames: [ariadne-system]}
+  selector: {matchLabels: {app: logcollector}}
+  endpoints:
+    - port: metrics
+      interval: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ariadne-orchestrator
+  namespace: monitoring
+  labels: {release: kube-prometheus-stack}
+spec:
+  namespaceSelector: {matchNames: [ariadne-system]}
+  selector: {matchLabels: {app: orchestrator}}
+  endpoints:
+    - port: metrics
+      interval: 10s

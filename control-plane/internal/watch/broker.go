@@ -63,11 +63,13 @@ func (b *Broker) Subscribe() (<-chan *ariadnev1.ChangeEvent, func()) {
 	ch := make(chan *ariadnev1.ChangeEvent, 256)
 	b.subscribers[id] = ch
 	b.mu.Unlock()
+	brokerSubscribers.Inc()
 
 	cancel := func() {
 		b.mu.Lock()
 		delete(b.subscribers, id)
 		b.mu.Unlock()
+		brokerSubscribers.Dec()
 		close(ch)
 	}
 	return ch, cancel
