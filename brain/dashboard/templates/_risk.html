@@ -1,0 +1,20 @@
+{% if not change %}
+<p class="empty">No impact analysis run yet.</p>
+{% else %}
+<div class="risk-trigger">
+  triggered by <span class="pill pill-{{ change.change_class.split('_')[2].lower() if change.change_class else 'other' }}">{{ change.change_class.replace('CHANGE_CLASS_', '') }}</span>
+  on <code>{{ change.object_ns }}/{{ change.object_name }}</code>
+</div>
+<ol class="risk-list">
+  {% for r in risks %}
+  <li class="risk-item">
+    <div class="risk-bar-track"><div class="risk-bar-fill" style="width: {{ (r.risk_score * 100) | round | int }}%"></div></div>
+    <div class="risk-row">
+      <strong>{{ r.title }}</strong>
+      <span class="risk-score">{{ (r.risk_score * 100) | round | int }}</span>
+    </div>
+    <div class="risk-meta">{{ r.hop_distance }} hops &middot; criticality {{ r.criticality }} &middot; {{ 'no coverage' if r.coverage_gap > 0 else 'covered' }}</div>
+  </li>
+  {% endfor %}
+</ol>
+{% endif %}

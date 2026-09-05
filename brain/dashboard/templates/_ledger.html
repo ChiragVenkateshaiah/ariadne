@@ -1,0 +1,37 @@
+{% if not items %}
+<p class="empty">No adjudications recorded yet.</p>
+{% else %}
+<ul class="ledger">
+  {% for item in items %}
+  {% if item.row_kind == 'heal' %}
+  <li class="ledger-item ledger-heal">
+    <div class="ledger-icon">&#10003;</div>
+    <div class="ledger-body">
+      <div class="ledger-title">Healed &mdash; <span class="mono">{{ item.intent }}</span></div>
+      <div class="ledger-detail">
+        <span class="pill pill-adjudication">{{ item.adjudication }}</span>
+        confidence {{ (item.confidence * 100) | round | int }}%
+      </div>
+      <div class="ledger-binding mono">{{ item.old_binding }} &rarr; {{ item.new_binding }}</div>
+      <div class="ledger-reasoning">{{ item.reasoning }}</div>
+    </div>
+    <div class="ledger-time">{{ item.at[11:19] if item.at else '' }}</div>
+  </li>
+  {% else %}
+  <li class="ledger-item ledger-blocked">
+    <div class="ledger-icon">&#10005;</div>
+    <div class="ledger-body">
+      <div class="ledger-title">Blocked &mdash; {{ item.title }}</div>
+      <div class="ledger-detail">
+        <span class="pill pill-severity-{{ item.severity | lower }}">{{ item.severity }}</span>
+        confidence {{ (item.confidence * 100) | round | int }}%
+      </div>
+      <div class="ledger-binding mono">{{ item.root_cause }}</div>
+      <div class="ledger-reasoning">{{ item.reasoning }}</div>
+    </div>
+    <div class="ledger-time">{{ item.at[11:19] if item.at else '' }}</div>
+  </li>
+  {% endif %}
+  {% endfor %}
+</ul>
+{% endif %}

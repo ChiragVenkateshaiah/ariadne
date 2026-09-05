@@ -1,0 +1,27 @@
+<div class="stat-row">
+  <div class="stat-tile">
+    <div class="stat-value">{{ coverage_pct }}%</div>
+    <div class="stat-label">Workflow coverage</div>
+    <div class="stat-sub">{{ workflows_covered }} / {{ workflows_total }} workflows tested</div>
+  </div>
+  <div class="stat-tile stat-good">
+    <div class="stat-value">{{ heals }}</div>
+    <div class="stat-label">Self-healed</div>
+    <div class="stat-sub">tests re-bound automatically</div>
+  </div>
+  <div class="stat-tile stat-critical">
+    <div class="stat-value">{{ blocked }}</div>
+    <div class="stat-label">Blocked</div>
+    <div class="stat-sub">regressions caught, not healed</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-value">{{ changes_total }}</div>
+    <div class="stat-label">Changes observed</div>
+    <div class="stat-sub">from the live cluster</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-value">{{ minutes_saved }}<span class="stat-unit">min</span></div>
+    <div class="stat-label">Manual triage avoided</div>
+    <div class="stat-sub">{{ heals }} heals &times; 15 min each</div>
+  </div>
+</div>

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ariadne</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">&#9670;</span>
+      <span class="brand-name">Ariadne</span>
+    </div>
+    <div class="tagline">Autonomous Quality Engineering &mdash; live from the cluster</div>
+  </header>
+
+  <section id="metrics" hx-get="/partials/metrics" hx-trigger="load, every 3s" hx-swap="innerHTML"></section>
+
+  <main class="grid">
+    <section class="panel graph-panel">
+      <h2>World Model</h2>
+      <div id="cy"></div>
+      <div class="legend" id="graph-legend"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Risk-Ranked Impact <span class="hint">most recent change</span></h2>
+      <div id="risk" hx-get="/partials/risk" hx-trigger="load, every 3s" hx-swap="innerHTML"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Change Feed</h2>
+      <div id="changes" hx-get="/partials/changes" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+    </section>
+
+    <section class="panel span-2">
+      <h2>Adjudication Ledger <span class="hint">heal vs. block</span></h2>
+      <div id="ledger" hx-get="/partials/ledger" hx-trigger="load, every 3s" hx-swap="innerHTML"></div>
+    </section>
+  </main>
+
+  <script src="/static/graph.js"></script>
+</body>
+</html>

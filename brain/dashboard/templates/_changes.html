@@ -1,0 +1,19 @@
+{% if not changes %}
+<p class="empty">No changes observed yet.</p>
+{% else %}
+<ul class="feed">
+  {% for c in changes %}
+  <li class="feed-item {{ 'feed-item-noise' if c.is_noise else '' }}">
+    <div class="feed-time">{{ c.observed_at[11:19] if c.observed_at else '' }}</div>
+    <div class="feed-body">
+      <span class="pill pill-{{ c.change_class.split('_')[2].lower() if c.change_class else 'other' }}">{{ c.change_class.replace('CHANGE_CLASS_', '') }}</span>
+      <span class="feed-op">{{ c.operation.replace('CHANGE_OPERATION_', '') }}</span>
+      <strong>{{ c.object_kind }}</strong> <code>{{ c.object_ns }}/{{ c.object_name }}</code>
+      {% if c.touched_workloads %}
+      <div class="feed-detail">affects: {{ c.touched_workloads | join(', ') }}</div>
+      {% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
