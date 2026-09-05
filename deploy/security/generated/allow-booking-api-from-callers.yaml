@@ -1,0 +1,19 @@
+# booking-api is reachable from web-ui (each has a CALLS edge to it in the World Model) and from nothing else.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-booking-api-from-callers
+  namespace: travel
+  labels:
+    ariadne.dev/generated: 'true'
+spec:
+  podSelector:
+    matchLabels:
+      app: booking-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web-ui

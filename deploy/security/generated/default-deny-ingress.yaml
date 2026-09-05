@@ -1,0 +1,12 @@
+# Kubernetes' baseline with no policies is unrestricted ingress; this establishes deny-by-default so every allow below is an explicit, graph-derived grant.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: travel
+  labels:
+    ariadne.dev/generated: 'true'
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress

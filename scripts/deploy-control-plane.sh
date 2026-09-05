@@ -8,9 +8,12 @@ kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/01-sensor-rbac
 kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/02-sensor-deployment.yaml"
 kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/03-logcollector-rbac.yaml"
 kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/04-logcollector-deployment.yaml"
+kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/05-orchestrator-rbac.yaml"
+kubectl --context "$CONTEXT" apply -f "$ROOT/deploy/control-plane/06-orchestrator-deployment.yaml"
 
 echo "==> waiting for rollouts"
 kubectl --context "$CONTEXT" rollout status deployment/sensor -n ariadne-system --timeout=120s
 kubectl --context "$CONTEXT" rollout status deployment/logcollector -n ariadne-system --timeout=120s
+kubectl --context "$CONTEXT" rollout status deployment/orchestrator -n ariadne-system --timeout=120s
 
 kubectl --context "$CONTEXT" get pods -n ariadne-system -o wide

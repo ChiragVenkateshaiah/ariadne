@@ -69,4 +69,5 @@ SERVICE_CALLS: list[tuple[str, str, str]] = [  # (caller_service, callee_service
     ("web-ui", "booking-api", "travel"),
     ("search-api", "pricing-svc", "travel"),
     ("booking-api", "payment-svc", "travel"),
+    ("booking-api", "postgres", "travel"),
 ]

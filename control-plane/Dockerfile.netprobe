@@ -1,0 +1,11 @@
+FROM golang:1.25-bookworm AS build
+WORKDIR /src
+COPY control-plane/go.mod control-plane/go.sum ./
+RUN go mod download
+COPY control-plane/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/netprobe ./cmd/netprobe
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/netprobe /netprobe
+USER nonroot:nonroot
+ENTRYPOINT ["/netprobe"]

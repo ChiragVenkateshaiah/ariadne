@@ -140,7 +140,8 @@ def _ingest_service(conn: sqlite3.Connection, ns: str, name: str, raw: dict) -> 
     spec = raw.get("spec", {}) or {}
     selector = spec.get("selector") or {}
     store.upsert_node(conn, nid, NodeKind.SERVICE, name, namespace=ns,
-                       attrs={"selector": selector, "ports": spec.get("ports") or []})
+                       attrs={"selector": selector, "ports": spec.get("ports") or [],
+                              "type": spec.get("type") or "ClusterIP"})
     _relink_service(conn, ns, nid, selector)
 
 

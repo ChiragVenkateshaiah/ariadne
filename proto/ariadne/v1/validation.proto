@@ -67,6 +67,14 @@ message ValidatorTask {
   repeated string target_workflow_ids = 12;  // for result attribution
   repeated ObjectRef target_objects = 13;    // pods/services under test
   double priority = 14;                      // risk score from impact analysis
+
+  // pod_labels lets the brain request that the Job's pod carry specific
+  // labels -- needed for VALIDATOR_KIND_NETWORK_CONFORMANCE, where a
+  // NetworkPolicy's verdict depends on matching the SOURCE workload's pod
+  // labels exactly. A throwaway probe pod labeled identically to a real
+  // service is subject to the exact same policy as that service's own
+  // traffic, without needing to exec into a (possibly shell-less) real pod.
+  map<string, string> pod_labels = 15;
 }
 
 enum ValidatorPhase {

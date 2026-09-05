@@ -1,0 +1,16 @@
+# web-ui is a NodePort Service (externally exposed) -- ingress is allowed from any source, since NodePort/LoadBalancer traffic does not originate from an in-cluster pod a podSelector could match.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-ui-external-ingress
+  namespace: travel
+  labels:
+    ariadne.dev/generated: 'true'
+spec:
+  podSelector:
+    matchLabels:
+      app: web-ui
+  policyTypes:
+  - Ingress
+  ingress:
+  - {}
