@@ -141,4 +141,70 @@ def default_mock_client() -> MockLLMClient:
     client = MockLLMClient()
     client.register("synth_workflows", SYNTH_WORKFLOWS_FIXTURE)
     client.register("resolve_intent", _mock_resolve_intent)
+    client.register("adjudicate_failure", _mock_adjudicate_failure)
     return client
+
+
+def _mock_adjudicate_failure(_system: str, prompt: str) -> dict:
+    """A deliberately simple stand-in for the adjudicator's real reasoning
+    (see ariadne.adjudicate.adjudicator). This is the mock that has to get
+    Act 1 vs Act 2 right, so unlike resolve_intent's honest "sometimes I
+    can't tell", this one encodes the actual decision rule the system exists
+    to make: an application error in the evidence, or a config/behavioral
+    change with no accompanying cosmetic signal, is treated as a real
+    regression and NEVER healed; a UI/workload-shape change with clean logs
+    is treated as safe test drift. A real Claude call would read the diffs
+    and logs directly rather than following this fixed rule, but the rule
+    itself -- bias toward blocking, never toward a false heal -- is exactly
+    what docs/ARCHITECTURE.md's central claim requires either way.
+    """
+    data = json.loads(prompt)
+    changes = data.get("recent_changes", [])
+    evidence = data.get("evidence", {}) or {}
+    error_lines = evidence.get("error_log_lines", [])
+
+    if error_lines:
+        return {
+            "adjudication": "APP_REGRESSION", "confidence": 0.9,
+            "root_cause": f"Application error observed: {error_lines[0]}",
+            "reasoning": "An error in the service's own logs indicates a real application "
+                         "fault, not test drift -- healing this would hide the bug.",
+            "summary": "Blocked: application error detected in service logs.",
+        }
+
+    cosmetic_classes = {"CHANGE_CLASS_WORKLOAD_SPEC", "CHANGE_CLASS_UI_SURFACE", "CHANGE_CLASS_ROUTE"}
+    behavioral_classes = {"CHANGE_CLASS_CONFIG", "CHANGE_CLASS_SECRET"}
+
+    cosmetic = [c for c in changes if c.get("change_class") in cosmetic_classes]
+    behavioral = [c for c in changes if c.get("change_class") in behavioral_classes]
+
+    if behavioral:
+        change = behavioral[0]
+        diff = (change.get("diffs") or [{}])[0]
+        return {
+            "adjudication": "APP_REGRESSION", "confidence": 0.75,
+            "root_cause": f"{change.get('object_name')} changed: {diff.get('path')} "
+                           f"{diff.get('before')!r} -> {diff.get('after')!r}",
+            "reasoning": "A configuration change affecting business logic (not just UI "
+                         "presentation) has no accompanying cosmetic signal explaining the "
+                         "failure -- treat as an unreviewed behavior change, not test drift.",
+            "summary": "Blocked: unreviewed configuration change affecting business logic.",
+        }
+
+    if cosmetic:
+        change = cosmetic[0]
+        return {
+            "adjudication": "TEST_DEFECT", "confidence": 0.85,
+            "root_cause": f"{change.get('object_name')} ({change.get('change_class')}) changed recently",
+            "reasoning": "The failure follows a UI/workload-shape change with no application "
+                         "errors in the evidence -- consistent with selector drift, safe to heal.",
+            "summary": "Healed: cosmetic UI change, no behavioral regression detected.",
+        }
+
+    return {
+        "adjudication": "UNDETERMINED", "confidence": 0.3,
+        "root_cause": "no recent change or log evidence explains this failure",
+        "reasoning": "Neither a relevant recent change nor a log error was found -- "
+                     "insufficient evidence to safely heal or confidently block.",
+        "summary": "Escalate to human review.",
+    }
