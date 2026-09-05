@@ -119,15 +119,24 @@ def _name_regex(hint: str) -> re.Pattern:
 def _unique_visible(locator: Locator) -> bool:
     try:
         return locator.count() == 1 and locator.first.is_visible()
-    except Exception:
+    except Exception:  # noqa: BLE001 -- Playwright raises several exception
+        # types here (detached element, navigation mid-check, timeout); all
+        # of them mean the same thing to a caller: this locator isn't
+        # resolvable right now, so treat it as a plain miss, not a crash.
         return False
 
 
 def _apply_cached_strategy(page: Page, strategy: BindingStrategy, value: str) -> Locator | None:
     try:
         if strategy == BindingStrategy.ROLE_NAME:
+            # `name` here is already a regex pattern (cached verbatim from
+            # _try_heuristics' name_re.pattern, an AND-lookahead chain) --
+            # re.escape()-ing it, as an earlier version of this branch did,
+            # turns the pattern into a literal string match that can never
+            # succeed. LABEL/PLACEHOLDER/TEXT below never made this mistake;
+            # ROLE_NAME must be compiled the same way they are.
             role, _, name = value.partition("::")
-            return page.get_by_role(role, name=re.compile(re.escape(name), re.IGNORECASE))
+            return page.get_by_role(role, name=re.compile(name, re.IGNORECASE))
         if strategy == BindingStrategy.LABEL:
             return page.get_by_label(re.compile(value, re.IGNORECASE))
         if strategy == BindingStrategy.PLACEHOLDER:
@@ -140,7 +149,10 @@ def _apply_cached_strategy(page: Page, strategy: BindingStrategy, value: str) ->
             if value.startswith("nth::"):
                 return page.locator(_INTERACTIVE_SELECTOR).nth(int(value.removeprefix("nth::")))
             return page.locator(value)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- a cached locator string can fail to
+        # reconstruct for many reasons (invalid regex from a corrupted
+        # cache row, a role Playwright rejects); any of them just means
+        # "cache miss, fall through to heuristics," not a caller-visible error.
         return None
     return None
 

@@ -96,7 +96,7 @@ def changes_partial(request: Request):
     for r in rows:
         hints = json.loads(r["hints_json"])
         changes.append({
-            **{k: r[k] for k in r.keys()},
+            **dict(r),
             "is_noise": hints.get("is_noise", False),
             "touched_workloads": hints.get("touched_workload_names", []),
         })
@@ -116,8 +116,8 @@ def ledger_partial(request: Request):
     ).fetchall()
     conn.close()
 
-    items = [{"row_kind": "heal", **{k: r[k] for k in r.keys()}} for r in heals]
-    items += [{"row_kind": "finding", **{k: r[k] for k in r.keys()}} for r in findings]
+    items = [{"row_kind": "heal", **dict(r)} for r in heals]
+    items += [{"row_kind": "finding", **dict(r)} for r in findings]
     items.sort(key=lambda x: x["at"] or "", reverse=True)
     return templates.TemplateResponse(request, "_ledger.html", {"items": items[:20]})
 

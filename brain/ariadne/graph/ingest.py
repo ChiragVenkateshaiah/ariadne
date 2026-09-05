@@ -24,10 +24,10 @@ import sqlite3
 from datetime import timezone
 
 import grpc
+from ariadne.v1 import change_pb2, change_pb2_grpc, common_pb2
 
 from ariadne.graph import model, store
 from ariadne.graph.model import EdgeKind, NodeKind
-from ariadne.v1 import change_pb2, change_pb2_grpc, common_pb2
 
 PLACEHOLDER_CONFIDENCE = 0.5
 

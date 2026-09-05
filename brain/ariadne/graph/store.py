@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-from ariadne.graph.model import Discovery, Edge, EdgeKind, Node, NodeKind
+from ariadne.graph.model import Discovery, EdgeKind, Node, NodeKind
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 

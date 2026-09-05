@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 import networkx as nx
 
-from ariadne.graph.model import RISK_WEIGHTS, CHANGE_CLASS_RISK, NodeKind, WorkflowRisk
+from ariadne.graph.model import CHANGE_CLASS_RISK, RISK_WEIGHTS, NodeKind, WorkflowRisk
 
 
 def build_graph(conn: sqlite3.Connection) -> nx.DiGraph:

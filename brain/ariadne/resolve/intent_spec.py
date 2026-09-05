@@ -38,7 +38,7 @@ class IntentStep:
         return d
 
     @staticmethod
-    def from_dict(d: dict[str, Any]) -> "IntentStep":
+    def from_dict(d: dict[str, Any]) -> IntentStep:
         return IntentStep(
             ordinal=d["ordinal"], intent=d["intent"], action=StepAction(d["action"]),
             target_hint=d.get("target_hint"), value_expr=d.get("value_expr"),
@@ -82,7 +82,7 @@ class IntentSpec:
         }, indent=2)
 
     @staticmethod
-    def from_json(text: str) -> "IntentSpec":
+    def from_json(text: str) -> IntentSpec:
         d = json.loads(text)
         return IntentSpec(
             spec_id=d["spec_id"], workflow_id=d["workflow_id"], workflow_slug=d["workflow_slug"],

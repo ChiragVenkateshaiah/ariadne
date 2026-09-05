@@ -101,7 +101,7 @@ def _execute_step(spec: IntentSpec, step: IntentStep, page: Page, conn: sqlite3.
 
 def _execute_assert(spec: IntentSpec, step: IntentStep, page: Page) -> StepResult:
     assertion = (step.assertion or "").lower()
-    base = dict(ordinal=step.ordinal, intent=step.intent, action=step.action.value)
+    base = {"ordinal": step.ordinal, "intent": step.intent, "action": step.action.value}
 
     if "offer" in assertion and "price" in assertion:
         count = page.locator('[data-testid="offer-price"]').count()
