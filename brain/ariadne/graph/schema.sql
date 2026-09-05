@@ -282,9 +282,13 @@ CREATE TABLE IF NOT EXISTS test_history (
 -- Views
 -- ---------------------------------------------------------------------------
 
--- Which services does each workflow actually depend on? This is the join that
--- answers "pricing-svc changed -- what do I run?" and also "this workflow
--- failed -- whose logs do I read?".
+-- Which services does each workflow DIRECTLY touch (one hop from a step, via
+-- either an API step's EXERCISES edge or a UI step's RENDERS_ON edge)? This
+-- is a convenience for quick inspection, not the impact-analysis traversal
+-- itself: it deliberately does NOT follow CALLS edges transitively (a
+-- workflow that only renders on web-ui but whose backend chain reaches
+-- pricing-svc three hops later needs real graph traversal, not a fixed-depth
+-- view -- see brain/ariadne/graph/impact.py, which walks the full closure).
 CREATE VIEW IF NOT EXISTS v_workflow_services AS
 SELECT DISTINCT
     w.node_id   AS workflow_id,
@@ -297,7 +301,17 @@ FROM workflows w
 JOIN edges e_step  ON e_step.src_id = w.node_id AND e_step.kind = 'HAS_STEP'   AND e_step.active = 1
 JOIN edges e_ex    ON e_ex.src_id   = e_step.dst_id AND e_ex.kind = 'EXERCISES' AND e_ex.active = 1
 JOIN edges e_srv   ON e_srv.src_id  = e_ex.dst_id   AND e_srv.kind = 'SERVED_BY' AND e_srv.active = 1
-JOIN nodes svc     ON svc.id = e_srv.dst_id AND svc.active = 1;
+JOIN nodes svc     ON svc.id = e_srv.dst_id AND svc.active = 1
+
+UNION
+
+SELECT DISTINCT
+    w.node_id, w.slug, w.criticality, svc.id, svc.namespace, svc.name
+FROM workflows w
+JOIN edges e_step   ON e_step.src_id = w.node_id AND e_step.kind = 'HAS_STEP'    AND e_step.active = 1
+JOIN edges e_render ON e_render.src_id = e_step.dst_id AND e_render.kind = 'RENDERS_ON' AND e_render.active = 1
+JOIN edges e_srv    ON e_srv.src_id = e_render.dst_id  AND e_srv.kind = 'SERVED_BY'   AND e_srv.active = 1
+JOIN nodes svc      ON svc.id = e_srv.dst_id AND svc.active = 1;
 
 -- Workflows with no active test spec: the coverage gaps that should be
 -- generated first when a new surface appears.

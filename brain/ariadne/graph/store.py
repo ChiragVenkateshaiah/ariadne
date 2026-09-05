@@ -174,3 +174,72 @@ def get_node(conn: sqlite3.Connection, node_id: str) -> Node | None:
         k8s_uid=row["k8s_uid"], display_name=row["display_name"], discovery=Discovery(row["discovery"]),
         confidence=row["confidence"], attrs=json.loads(row["attrs"]),
     )
+
+
+def upsert_workflow(
+    conn: sqlite3.Connection,
+    node_id: str,
+    slug: str,
+    title: str,
+    *,
+    description: str | None = None,
+    business_goal: str | None = None,
+    criticality: float = 0.5,
+    revenue_path: bool = False,
+    pii_involved: bool = False,
+    entry_route: str | None = None,
+    persona: str | None = None,
+    derived_from: str | None = None,
+) -> None:
+    """Workflow nodes live in both `nodes` (for uniform graph traversal) and
+    `workflows` (for the business metadata that drives risk scoring) -- the
+    two inserts are kept together here so no caller can create one without
+    the other."""
+    upsert_node(conn, node_id, NodeKind.WORKFLOW, title, discovery=Discovery.LLM_INFERRED, confidence=0.7)
+    exists = conn.execute("SELECT 1 FROM workflows WHERE node_id = ?", (node_id,)).fetchone()
+    if exists:
+        conn.execute(
+            """UPDATE workflows SET title=?, description=?, business_goal=?, criticality=?,
+               revenue_path=?, pii_involved=?, entry_route=?, persona=?, derived_from=?
+               WHERE node_id=?""",
+            (title, description, business_goal, criticality, int(revenue_path), int(pii_involved),
+             entry_route, persona, derived_from, node_id),
+        )
+        return
+    conn.execute(
+        """INSERT INTO workflows (node_id, slug, title, description, business_goal, criticality,
+           revenue_path, pii_involved, entry_route, persona, derived_from, reviewed_by_human)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,0)""",
+        (node_id, slug, title, description, business_goal, criticality,
+         int(revenue_path), int(pii_involved), entry_route, persona, derived_from),
+    )
+
+
+def upsert_workflow_step(
+    conn: sqlite3.Connection,
+    node_id: str,
+    workflow_id: str,
+    ordinal: int,
+    intent: str,
+    action: str,
+    *,
+    target_hint: str | None = None,
+    value_expr: str | None = None,
+    assertion: str | None = None,
+    optional: bool = False,
+) -> None:
+    upsert_node(conn, node_id, NodeKind.WORKFLOW_STEP, intent, discovery=Discovery.LLM_INFERRED, confidence=0.7)
+    exists = conn.execute("SELECT 1 FROM workflow_steps WHERE node_id = ?", (node_id,)).fetchone()
+    if exists:
+        conn.execute(
+            """UPDATE workflow_steps SET ordinal=?, intent=?, action=?, target_hint=?,
+               value_expr=?, assertion=?, optional=? WHERE node_id=?""",
+            (ordinal, intent, action, target_hint, value_expr, assertion, int(optional), node_id),
+        )
+        return
+    conn.execute(
+        """INSERT INTO workflow_steps (node_id, workflow_id, ordinal, intent, action,
+           target_hint, value_expr, assertion, optional)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (node_id, workflow_id, ordinal, intent, action, target_hint, value_expr, assertion, int(optional)),
+    )

@@ -62,20 +62,18 @@ def handle_change_event(conn: sqlite3.Connection, ev: change_pb2.ChangeEvent) ->
     obj = ev.object
     kind, ns, name = obj.kind, obj.namespace, obj.name
 
-    store.record_change_event(
-        conn, ev.id, ev.observed_at.ToDatetime(tzinfo=timezone.utc).isoformat(),
-        change_pb2.ChangeSource.Name(ev.source), change_pb2.ChangeClass.Name(ev.change_class),
-        change_pb2.ChangeOperation.Name(ev.operation),
-        object_node_id=None, object_kind=kind, object_ns=ns, object_name=name,
-        hints=_hints_to_dict(ev.hints),
-        diffs=[{"path": d.path, "before": d.before, "after": d.after, "op": common_pb2.DiffOp.Name(d.op)} for d in ev.diffs],
-        provenance={"manager": ev.provenance.manager, "actor_kind": ev.provenance.actor_kind},
-    )
+    node_kind = _KIND_KEY_MAP.get(kind)
+    object_node_id = model.node_id(node_kind, ns, name) if node_kind is not None else None
 
+    # Topology ingestion (which creates the node, if any) MUST happen before
+    # record_change_event: change_events.object_node_id has a foreign key
+    # into nodes(id), and for a brand-new object this is the very event that
+    # brings that node into existence. Recording the event first would fail
+    # the very first time we ever see any object.
     if ev.operation == change_pb2.CHANGE_OPERATION_DELETED:
-        node_kind = _KIND_KEY_MAP.get(kind)
         if node_kind is not None:
-            store.deactivate_node(conn, model.node_id(node_kind, ns, name))
+            store.deactivate_node(conn, object_node_id)
+        _record_event(conn, ev, object_node_id)
         return
 
     raw = json.loads(ev.raw_object_json) if ev.raw_object_json else {}
@@ -100,6 +98,21 @@ def handle_change_event(conn: sqlite3.Connection, ev: change_pb2.ChangeEvent) ->
         _ingest_role_binding(conn, ns if kind == "RoleBinding" else None, name, raw)
     # HorizontalPodAutoscaler: no dedicated NodeKind (scaling is tracked as a
     # change_events fact, not a topology node) -- intentionally not handled.
+
+    _record_event(conn, ev, object_node_id)
+
+
+def _record_event(conn: sqlite3.Connection, ev: change_pb2.ChangeEvent, object_node_id: str | None) -> None:
+    obj = ev.object
+    store.record_change_event(
+        conn, ev.id, ev.observed_at.ToDatetime(tzinfo=timezone.utc).isoformat(),
+        change_pb2.ChangeSource.Name(ev.source), change_pb2.ChangeClass.Name(ev.change_class),
+        change_pb2.ChangeOperation.Name(ev.operation),
+        object_node_id=object_node_id, object_kind=obj.kind, object_ns=obj.namespace, object_name=obj.name,
+        hints=_hints_to_dict(ev.hints),
+        diffs=[{"path": d.path, "before": d.before, "after": d.after, "op": common_pb2.DiffOp.Name(d.op)} for d in ev.diffs],
+        provenance={"manager": ev.provenance.manager, "actor_kind": ev.provenance.actor_kind},
+    )
 
 
 def _hints_to_dict(hints: change_pb2.ChangeHints) -> dict:
